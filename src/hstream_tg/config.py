@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     dump_channel: str | None = None
 
     # ── Heroku auto-update ──────────────────────────────
-    upstream_repo: str = "https://github.com/zenin-373/Hstream-TG.git"
+    upstream_repo: str = "https://github.com/leassapie/manko.git"
     upstream_branch: str = "main"
 
     # ── Computed ────────────────────────────────────────
