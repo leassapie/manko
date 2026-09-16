@@ -25,7 +25,7 @@ brew install ffmpeg aria2          # macOS
 ```bash
 uv sync                            # install deps
 cp .env.example .env               # fill BOT_TOKEN, API_ID, API_HASH
-uv run python -m hstream_tg        # start bot
+uv run python -m mangko        # start bot
 ```
 
 Or Docker:
@@ -37,9 +37,9 @@ docker run -d --env-file .env mangko
 ## Architecture
 
 ```
-src/hstream_tg/
+src/mangko/
 ├── __init__.py      # version
-├── __main__.py      # entry: python -m hstream_tg
+├── __main__.py      # entry: python -m mangko
 ├── config.py        # pydantic-settings (typed env)
 ├── bot.py           # Kurigram app + handlers (thin)
 ├── downloader.py    # yt-dlp download + subtitle resolve + remux

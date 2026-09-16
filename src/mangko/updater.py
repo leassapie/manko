@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from subprocess import run
 
-from hstream_tg.config import get_settings
+from mangko.config import get_settings
 
 logging.basicConfig(
     format="[%(asctime)s] %(levelname)s - %(message)s",
@@ -19,8 +19,8 @@ log = logging.getLogger("update")
 # Files that must not be wiped by git reset (session / user data)
 PRESERVE = {
     ".env",
-    "hstream_tg.session",
-    "hstream_tg.session-journal",
+    "mangko.session",
+    "mangko.session-journal",
 }
 
 

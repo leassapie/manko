@@ -25,7 +25,7 @@ dev = [
 ]
 
 [project.scripts]
-mangko = "hstream_tg.__main__:main"
+mangko = "mangko.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.12"]
@@ -33,7 +33,7 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-root = "src"
-module-name = "hstream_tg"
+module-name = "mangko"
 
 # ── Ruff ──────────────────────────────────────────────
 [tool.ruff]

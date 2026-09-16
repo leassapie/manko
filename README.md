@@ -121,7 +121,7 @@ DOWNLOAD_ROOT=downloads
 COOKIES_DIR=user_cookies
 KEEP_FILES=false
 WORKERS=2
-SESSION_NAME=hstream_tg
+SESSION_NAME=mangko
 """.strip() + "\n")
 
 # 4) run (keep cell running)
@@ -188,7 +188,7 @@ See `.env.example`:
 | `COOKIES_DIR` | `user_cookies` | Per-user cookies |
 | `KEEP_FILES` | `false` | Keep files after send |
 | `WORKERS` | `2` | Concurrent download threads |
-| `SESSION_NAME` | `hstream_tg` | wzgram session name |
+| `SESSION_NAME` | `mangko` | kurigram session name |
 
 ## Architecture
 

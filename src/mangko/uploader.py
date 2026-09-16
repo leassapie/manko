@@ -8,9 +8,9 @@ from pyrogram import Client, enums
 from pyrogram.errors import FloodWait, RPCError
 from pyrogram.types import Message
 
-from hstream_tg.config import Settings
-from hstream_tg.downloader import SeriesInfo
-from hstream_tg.utils import html_escape, human_size, progress_bar, sys_stats_line
+from mangko.config import Settings
+from mangko.downloader import SeriesInfo
+from mangko.utils import html_escape, human_size, progress_bar, sys_stats_line
 
 
 async def progress_edit(status: Message, text: str) -> None:

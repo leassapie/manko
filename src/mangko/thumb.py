@@ -15,7 +15,7 @@ from pathlib import Path
 
 import requests
 
-from hstream_tg.config import get_settings
+from mangko.config import get_settings
 
 logger = logging.getLogger("mangko")
 

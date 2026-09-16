@@ -6,7 +6,7 @@ import json
 import time
 from pathlib import Path
 
-from hstream_tg.downloader import (
+from mangko.downloader import (
     QUALITY_MAP,
     SUBTITLE_MAP,
     cleanup_old_files,
@@ -14,7 +14,7 @@ from hstream_tg.downloader import (
     get_user_stats,
     save_download_history,
 )
-from hstream_tg.utils import (
+from mangko.utils import (
     episode_number_from_url,
     human_size,
     html_escape,

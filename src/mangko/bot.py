@@ -16,8 +16,8 @@ from pyrogram.types import (
     Message,
 )
 
-from hstream_tg.config import Settings
-from hstream_tg.downloader import (
+from mangko.config import Settings
+from mangko.downloader import (
     SeriesInfo,
     cleanup_old_files,
     episode_url_to_series_url,
@@ -29,13 +29,13 @@ from hstream_tg.downloader import (
     scrape_episode_list,
     scrape_series_info,
 )
-from hstream_tg.thumb import (
+from mangko.thumb import (
     create_user_thumb,
     download_poster_thumb,
     resolve_doc_thumb,
     user_thumb_path,
 )
-from hstream_tg.uploader import (
+from mangko.uploader import (
     build_episode_caption,
     build_series_caption,
     media_destinations,
@@ -45,7 +45,7 @@ from hstream_tg.uploader import (
     send_document_no_reply,
     send_photo_no_reply,
 )
-from hstream_tg.utils import (
+from mangko.utils import (
     episode_number_from_url,
     html_escape,
     human_size,

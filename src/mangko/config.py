@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     history_dir: Path = Path("download_history")
     keep_files: bool = False
     workers: int = 2
-    session_name: str = "hstream_tg"
+    session_name: str = "mangko"
     upload_channel: str | None = None
     dump_channel: str | None = None
 

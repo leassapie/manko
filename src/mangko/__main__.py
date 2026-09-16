@@ -1,10 +1,10 @@
-"""Entry point: python -m hstream_tg"""
+"""Entry point: python -m mangko"""
 
 import logging
 
-from hstream_tg.bot import create_app, register_handlers
-from hstream_tg.config import get_settings
-from hstream_tg.downloader import ensure_dependencies
+from mangko.bot import create_app, register_handlers
+from mangko.config import get_settings
+from mangko.downloader import ensure_dependencies
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
@@ -16,7 +16,7 @@ logger = logging.getLogger("mangko")
 def main() -> None:
     # Auto-update from upstream before starting
     try:
-        from hstream_tg.updater import main as upstream_update
+        from mangko.updater import main as upstream_update
 
         upstream_update()
     except Exception as e:

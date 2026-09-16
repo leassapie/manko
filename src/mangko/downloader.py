@@ -16,7 +16,7 @@ from urllib.parse import unquote
 
 import requests
 
-from hstream_tg.utils import human_size, progress_bar
+from mangko.utils import human_size, progress_bar
 
 type ProgressCallback = Callable[[str], None]
 
