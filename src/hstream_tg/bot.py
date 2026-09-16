@@ -69,6 +69,31 @@ def create_app(settings: Settings) -> Client:
     )
 
 
+def main_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📥 Download", callback_data="menu_download"),
+                InlineKeyboardButton("🔍 Search", callback_data="menu_search"),
+            ],
+            [
+                InlineKeyboardButton("📦 Batch", callback_data="menu_batch"),
+                InlineKeyboardButton("⚙️ Settings", callback_data="menu_settings"),
+            ],
+            [
+                InlineKeyboardButton("📊 Status", callback_data="menu_status"),
+                InlineKeyboardButton("📜 History", callback_data="menu_history"),
+            ],
+        ]
+    )
+
+
+def back_kb(target: str = "menu") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("◀️ Kembali", callback_data=target)]]
+    )
+
+
 def register_handlers(app: Client, settings: Settings) -> None:
     active_jobs: set[int] = set()
     user_quality: dict[int, str] = {}
@@ -89,183 +114,229 @@ def register_handlers(app: Client, settings: Settings) -> None:
     def get_subtitle(uid: int) -> str:
         return user_subtitle.get(uid, settings.default_subtitle)
 
+    def clear_flag(prefix: str, uid: int) -> None:
+        flag = settings.cookies_dir / f"{prefix}_{uid}"
+        flag.unlink(missing_ok=True)
+
+    def set_flag(prefix: str, uid: int) -> None:
+        (settings.cookies_dir / f"{prefix}_{uid}").touch()
+
+    def has_flag(prefix: str, uid: int) -> bool:
+        return (settings.cookies_dir / f"{prefix}_{uid}").exists()
+
+    # ── /start ──────────────────────────────────────────
     @app.on_message(filters.command("start"))
     async def start_cmd(client: Client, message: Message) -> None:
-        kb = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("📖 Tutorial", callback_data="tutorial"),
-                    InlineKeyboardButton("⚙️ Settings", callback_data="settings"),
-                ],
-                [
-                    InlineKeyboardButton("📊 Stats", callback_data="stats"),
-                    InlineKeyboardButton("📜 History", callback_data="history"),
-                ],
-            ]
-        )
+        uid = message.from_user.id
+        cookies_ok = user_cookies_path(uid).exists()
+        quality = get_quality(uid)
+        subtitle = get_subtitle(uid)
+
         text = (
             "👋 <b>Mangko</b>\n\n"
             "Download episode hstream.moe langsung ke Telegram.\n"
-            "Quality terbaik, subtitle Inggris, remux MKV.\n\n"
-            "⚡ <b>Quick Start</b>\n"
-            "1. /cookies — upload Netscape cookies.txt\n"
-            "2. Kirim link episode\n"
-            "3. Bot download & upload otomatis\n\n"
-            "📚 <b>Commands</b>\n"
-            "/start — mulai\n"
-            "/help — bantuan\n"
-            "/cookies — set cookies\n"
-            "/thumb — set thumbnail\n"
-            "/quality — pilih resolusi\n"
-            "/subtitle — pilih bahasa subtitle\n"
-            "/search — cari anime\n"
-            "/batch — download semua episode\n"
-            "/status — cek status\n"
-            "/cancel — batalkan job\n"
-            "/clear — hapus file\n\n"
-            "⚠️ Kirim link <b>single episode</b> saja\n"
-            "contoh: <code>https://hstream.moe/hentai/title-1</code>"
+            "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
+            "💡 Kirim link episode untuk langsung download,\n"
+            "atau gunakan tombol di bawah."
         )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+        await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=main_menu_kb())
 
-    @app.on_callback_query(filters.regex("^tutorial$"))
-    async def tutorial_cb(client: Client, callback: CallbackQuery) -> None:
+    # ── Main Menu ───────────────────────────────────────
+    @app.on_callback_query(filters.regex("^menu$"))
+    async def menu_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        cookies_ok = user_cookies_path(uid).exists()
+        quality = get_quality(uid)
+        subtitle = get_subtitle(uid)
+
         text = (
-            "📖 <b>Tutorial</b>\n\n"
-            "<b>1. Setup Cookies</b>\n"
-            "Ketik <code>/cookies</code> lalu kirim file cookies.txt\n"
-            "dari browser (format Netscape).\n\n"
-            "<b>2. Pilih Quality</b>\n"
-            "Ketik <code>/quality</code> untuk pilih resolusi.\n"
-            "Default: best (otomatis terbaik).\n\n"
-            "<b>3. Pilih Subtitle</b>\n"
-            "Ketik <code>/subtitle</code> untuk pilih bahasa.\n"
-            "Default: English.\n\n"
-            "<b>4. Kirim Link</b>\n"
-            "Paste link episode hstream.moe.\n"
-            "Contoh: <code>https://hstream.moe/hentai/title-1</code>\n\n"
-            "<b>5. Tunggu</b>\n"
-            "Bot akan download, remux, lalu upload.\n"
-            "Proses biasanya 1-5 menit per episode.\n\n"
-            "<b>6. Selesai</b>\n"
-            "File akan muncul di chat ini.\n"
-            "Ketik <code>/status</code> untuk cek progress."
+            "👋 <b>Mangko</b>\n\n"
+            "Download episode hstream.moe langsung ke Telegram.\n"
+            "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
+            "💡 Kirim link episode untuk langsung download,\n"
+            "atau gunakan tombol di bawah."
         )
-        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML)
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=main_menu_kb())
 
-    @app.on_callback_query(filters.regex("^settings$"))
-    async def settings_cb(client: Client, callback: CallbackQuery) -> None:
+    # ── Download Menu ───────────────────────────────────
+    @app.on_callback_query(filters.regex("^menu_download$"))
+    async def download_menu_cb(client: Client, callback: CallbackQuery) -> None:
+        text = (
+            "📥 <b>Download</b>\n\n"
+            "Kirim link episode hstream.moe.\n"
+            "Contoh:\n"
+            "<code>https://hstream.moe/hentai/title-1</code>\n\n"
+            "💡 Bisa kirim beberapa link sekaligus\n"
+            "(satu link per baris)."
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb())
+
+    # ── Search ──────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^menu_search$"))
+    async def search_menu_cb(client: Client, callback: CallbackQuery) -> None:
+        set_flag("await_search", callback.from_user.id)
+        text = (
+            "🔍 <b>Search Anime</b>\n\n"
+            "Kirim judul anime yang ingin dicari.\n"
+            "Contoh: <code>Yuki</code>"
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb())
+
+    # ── Batch ───────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^menu_batch$"))
+    async def batch_menu_cb(client: Client, callback: CallbackQuery) -> None:
+        set_flag("await_batch", callback.from_user.id)
+        text = (
+            "📦 <b>Batch Download</b>\n\n"
+            "Kirim link series untuk download semua episode.\n"
+            "Contoh:\n"
+            "<code>https://hstream.moe/hentai/title</code>\n\n"
+            "⚠️ Tanpa angka episode di akhir URL."
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb())
+
+    # ── Settings ────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^menu_settings$"))
+    async def settings_menu_cb(client: Client, callback: CallbackQuery) -> None:
         uid = callback.from_user.id
         cookies_ok = user_cookies_path(uid).exists()
         thumb_ok = user_thumb_path(uid).exists()
         quality = get_quality(uid)
         subtitle = get_subtitle(uid)
+
         text = (
             "⚙️ <b>Settings</b>\n\n"
             f"🍪 Cookies: {'✅ aktif' if cookies_ok else '❌ belum set'}\n"
             f"🖼 Thumbnail: {'✅ custom' if thumb_ok else '❌ default'}\n"
             f"🎬 Quality: <code>{quality}</code>\n"
-            f"💬 Subtitle: <code>{subtitle}</code>\n"
-            f"📦 Max upload: <code>{settings.max_file_mb:.0f} MB</code>\n"
-            f"🗑 Auto-delete: <code>{settings.auto_delete_days} hari</code>\n\n"
-            "Ubah dengan perintah:\n"
-            "/cookies — upload cookies baru\n"
-            "/thumb — set custom thumbnail\n"
-            "/quality — pilih resolusi\n"
-            "/subtitle — pilih bahasa subtitle"
-        )
-        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML)
-
-    @app.on_callback_query(filters.regex("^stats$"))
-    async def stats_cb(client: Client, callback: CallbackQuery) -> None:
-        uid = callback.from_user.id
-        stats = get_user_stats(settings.history_dir, uid)
-        text = (
-            f"📊 <b>Stats</b> — User <code>{uid}</code>\n\n"
-            f"📥 Total download: <b>{stats['total_downloads']}</b>\n"
-            f"💾 Total size: <b>{human_size(stats['total_size'])}</b>\n"
-        )
-        if stats["formats"]:
-            text += "\n📊 <b>Quality Distribution</b>\n"
-            for q, count in stats["formats"].items():
-                text += f"• {q}: <b>{count}</b>\n"
-        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML)
-
-    @app.on_callback_query(filters.regex("^history$"))
-    async def history_cb(client: Client, callback: CallbackQuery) -> None:
-        uid = callback.from_user.id
-        history = get_download_history(settings.history_dir, uid, limit=5)
-        if not history:
-            text = "📜 <b>History</b>\n\nBelum ada download."
-        else:
-            text = "📜 <b>History</b> (5 terakhir)\n\n"
-            for i, h in enumerate(history, 1):
-                filename = h.get("filename", "unknown")
-                size = human_size(h.get("size", 0))
-                quality = h.get("quality", "?")
-                text += f"{i}. <code>{filename}</code>\n   📏 {size} • 🎬 {quality}\n"
-        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML)
-
-    @app.on_message(filters.command("help"))
-    async def help_cmd(client: Client, message: Message) -> None:
-        text = (
-            "❓ <b>Bantuan</b>\n\n"
-            "<b>Cara Pakai</b>\n"
-            "1. <code>/cookies</code> lalu kirim cookies.txt\n"
-            "2. (Optional) <code>/thumb</code> lalu kirim foto\n"
-            "3. (Optional) <code>/quality</code> pilih resolusi\n"
-            "4. (Optional) <code>/subtitle</code> pilih bahasa\n"
-            "5. Kirim link episode hstream.moe\n"
-            f"6. File di-upload via MTProto (max <code>{settings.max_file_mb:.0f} MB</code>)\n\n"
-            "<b>Commands</b>\n"
-            "/quality — pilih resolusi (best/1080p/720p/480p)\n"
-            "/subtitle — pilih bahasa (en/id/jp)\n"
-            "/search — cari anime dari judul\n"
-            "/batch — download semua episode series\n"
-            "/history — riwayat download\n"
-            "/stats — statistik download\n\n"
-            "<b>Troubleshooting</b>\n"
-            "• Download gagal? Coba /cookies dulu\n"
-            "• File terlalu besar? Bot akan beri tahu\n"
-            "• Ingin batal? Ketik /cancel"
-        )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML)
-
-    @app.on_message(filters.command("status"))
-    async def status_cmd(client: Client, message: Message) -> None:
-        uid = message.from_user.id
-        ud = user_dir(uid)
-        total = sum(f.stat().st_size for f in ud.rglob("*") if f.is_file())
-        files = list(ud.glob("*"))
-        cookies_ok = user_cookies_path(uid).exists()
-        thumb_ok = user_thumb_path(uid).exists()
-        jobs = len(active_jobs)
-        quality = get_quality(uid)
-        subtitle = get_subtitle(uid)
-
-        text = (
-            f"📊 <b>Status</b> — User <code>{uid}</code>\n\n"
-            f"📂 Files: <b>{len(files)}</b>\n"
-            f"💾 Size: <b>{human_size(total)}</b>\n"
-            f"⚙️ Jobs: <b>{jobs} active</b>\n"
-            f"🍪 Cookies: {'✅ ada' if cookies_ok else '❌ belum'}\n"
-            f"🖼 Thumbnail: {'✅ set' if thumb_ok else '❌ default'}\n"
-            f"🎬 Quality: <code>{quality}</code>\n"
-            f"💬 Subtitle: <code>{subtitle}</code>\n"
-            f"📦 Max upload: <code>{settings.max_file_mb:.0f} MB</code>"
+            f"💬 Subtitle: <code>{subtitle}</code>"
         )
         kb = InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("🔄 Refresh", callback_data="status_refresh"),
-                    InlineKeyboardButton("🧹 Clear", callback_data="status_clear"),
+                    InlineKeyboardButton("🍪 Cookies", callback_data="set_cookies"),
+                    InlineKeyboardButton("🖼 Thumb", callback_data="set_thumb"),
                 ],
+                [
+                    InlineKeyboardButton("🎬 Quality", callback_data="set_quality"),
+                    InlineKeyboardButton("💬 Subtitle", callback_data="set_subtitle"),
+                ],
+                [InlineKeyboardButton("◀️ Kembali", callback_data="menu")],
             ]
         )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
 
-    @app.on_callback_query(filters.regex("^status_refresh$"))
-    async def status_refresh_cb(client: Client, callback: CallbackQuery) -> None:
+    # ── Cookies ─────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^set_cookies$"))
+    async def cookies_btn_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        has_cookies = user_cookies_path(uid).exists()
+        status = "✅ Sudah ada" if has_cookies else "❌ Belum ada"
+        set_flag("await", uid)
+        text = (
+            "🍪 <b>Setup Cookies</b>\n\n"
+            f"Status: {status}\n\n"
+            "Kirim file <code>cookies.txt</code> (Netscape format)\n"
+            "sekarang."
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb("menu_settings"))
+
+    # ── Thumbnail ───────────────────────────────────────
+    @app.on_callback_query(filters.regex("^set_thumb$"))
+    async def thumb_btn_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        path = user_thumb_path(uid)
+        status = "✅ Sudah ada" if path.exists() else "❌ Belum ada"
+        set_flag("await_thumb", uid)
+        text = (
+            "🖼 <b>Setup Thumbnail</b>\n\n"
+            f"Status: {status}\n\n"
+            "Kirim foto untuk dijadikan thumbnail upload."
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb("menu_settings"))
+
+    # ── Quality ─────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^set_quality$"))
+    async def quality_btn_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        current = get_quality(uid)
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("🌟 Best", callback_data="q_best"),
+                    InlineKeyboardButton("🎬 2160p", callback_data="q_2160p"),
+                ],
+                [
+                    InlineKeyboardButton("📹 1080p", callback_data="q_1080p"),
+                    InlineKeyboardButton("🖥 720p", callback_data="q_720p"),
+                ],
+                [
+                    InlineKeyboardButton("📱 480p", callback_data="q_480p"),
+                    InlineKeyboardButton("📞 360p", callback_data="q_360p"),
+                ],
+                [InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")],
+            ]
+        )
+        text = (
+            f"🎬 <b>Quality</b>\n\n"
+            f"Sekarang: <code>{current}</code>"
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+
+    @app.on_callback_query(filters.regex("^q_(best|2160p|1080p|720p|480p|360p)$"))
+    async def quality_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        quality = callback.data.split("_", 1)[1]
+        user_quality[uid] = quality
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
+        )
+        await callback.message.edit_text(
+            f"✅ Quality diubah ke <code>{quality}</code>",
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=kb,
+        )
+
+    # ── Subtitle ────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^set_subtitle$"))
+    async def subtitle_btn_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        current = get_subtitle(uid)
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("🇬🇧 English", callback_data="sub_en"),
+                    InlineKeyboardButton("🇮🇩 Indonesia", callback_data="sub_id"),
+                ],
+                [
+                    InlineKeyboardButton("🇯🇵 Japanese", callback_data="sub_jp"),
+                ],
+                [InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")],
+            ]
+        )
+        text = (
+            f"💬 <b>Subtitle</b>\n\n"
+            f"Sekarang: <code>{current}</code>"
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+
+    @app.on_callback_query(filters.regex("^sub_(en|id|jp)$"))
+    async def subtitle_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        subtitle = callback.data.split("_", 1)[1]
+        user_subtitle[uid] = subtitle
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
+        )
+        await callback.message.edit_text(
+            f"✅ Subtitle diubah ke <code>{subtitle}</code>",
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=kb,
+        )
+
+    # ── Status ──────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^menu_status$"))
+    async def status_menu_cb(client: Client, callback: CallbackQuery) -> None:
         uid = callback.from_user.id
         ud = user_dir(uid)
         total = sum(f.stat().st_size for f in ud.rglob("*") if f.is_file())
@@ -277,22 +348,22 @@ def register_handlers(app: Client, settings: Settings) -> None:
         subtitle = get_subtitle(uid)
 
         text = (
-            f"📊 <b>Status</b> — User <code>{uid}</code>\n\n"
+            f"📊 <b>Status</b>\n\n"
             f"📂 Files: <b>{len(files)}</b>\n"
             f"💾 Size: <b>{human_size(total)}</b>\n"
             f"⚙️ Jobs: <b>{jobs} active</b>\n"
-            f"🍪 Cookies: {'✅ ada' if cookies_ok else '❌ belum'}\n"
-            f"🖼 Thumbnail: {'✅ set' if thumb_ok else '❌ default'}\n"
+            f"🍪 Cookies: {'✅' if cookies_ok else '❌'}\n"
+            f"🖼 Thumbnail: {'✅' if thumb_ok else '❌'}\n"
             f"🎬 Quality: <code>{quality}</code>\n"
-            f"💬 Subtitle: <code>{subtitle}</code>\n"
-            f"📦 Max upload: <code>{settings.max_file_mb:.0f} MB</code>"
+            f"💬 Subtitle: <code>{subtitle}</code>"
         )
         kb = InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("🔄 Refresh", callback_data="status_refresh"),
+                    InlineKeyboardButton("🔄 Refresh", callback_data="menu_status"),
                     InlineKeyboardButton("🧹 Clear", callback_data="status_clear"),
                 ],
+                [InlineKeyboardButton("◀️ Kembali", callback_data="menu")],
             ]
         )
         await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
@@ -312,111 +383,76 @@ def register_handlers(app: Client, settings: Settings) -> None:
                     removed += 1
             except Exception:
                 pass
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_status")]]
+        )
         await callback.message.edit_text(
             f"🧹 Berhasil hapus {removed} item(s).",
             parse_mode=enums.ParseMode.HTML,
+            reply_markup=kb,
         )
 
-    @app.on_message(filters.command("quality"))
-    async def quality_cmd(client: Client, message: Message) -> None:
-        uid = message.from_user.id
-        current = get_quality(uid)
-        kb = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("🌟 Best", callback_data="q_best"),
-                    InlineKeyboardButton("🎬 2160p", callback_data="q_2160p"),
-                ],
-                [
-                    InlineKeyboardButton("📹 1080p", callback_data="q_1080p"),
-                    InlineKeyboardButton("🖥 720p", callback_data="q_720p"),
-                ],
-                [
-                    InlineKeyboardButton("📱 480p", callback_data="q_480p"),
-                    InlineKeyboardButton("📞 360p", callback_data="q_360p"),
-                ],
-            ]
-        )
+    # ── History ─────────────────────────────────────────
+    @app.on_callback_query(filters.regex("^menu_history$"))
+    async def history_menu_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        history = get_download_history(settings.history_dir, uid, limit=5)
+        if not history:
+            text = "📜 <b>History</b>\n\nBelum ada download."
+            kb = back_kb()
+        else:
+            text = "📜 <b>History</b> (5 terakhir)\n\n"
+            kb_buttons: list[list[InlineKeyboardButton]] = []
+            for i, h in enumerate(history, 1):
+                filename = h.get("filename", "unknown")
+                size = human_size(h.get("size", 0))
+                quality = h.get("quality", "?")
+                text += f"{i}. <code>{filename}</code>\n   📏 {size} • 🎬 {quality}\n"
+            kb_buttons.append([InlineKeyboardButton("◀️ Kembali", callback_data="menu")])
+            kb = InlineKeyboardMarkup(kb_buttons)
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+
+    # ── Help ────────────────────────────────────────────
+    @app.on_message(filters.command("help"))
+    async def help_cmd(client: Client, message: Message) -> None:
         text = (
-            f"🎬 <b>Quality Selection</b>\n\n"
-            f"Sekarang: <code>{current}</code>\n\n"
-            "Pilih resolusi untuk download:\n"
-            "• <b>Best</b> — Otomatis terbaik\n"
-            "• <b>2160p</b> — 4K Ultra HD\n"
-            "• <b>1080p</b> — Full HD\n"
-            "• <b>720p</b> — HD\n"
-            "• <b>480p</b> — SD\n"
-            "• <b>360p</b> — Low"
+            "❓ <b>Bantuan</b>\n\n"
+            "<b>Cara Pakai</b>\n"
+            "1. /cookies lalu kirim cookies.txt\n"
+            "2. (Optional) /thumb lalu kirim foto\n"
+            "3. (Optional) /quality pilih resolusi\n"
+            "4. (Optional) /subtitle pilih bahasa\n"
+            "5. Kirim link episode hstream.moe\n\n"
+            "<b>Commands</b>\n"
+            "/quality — pilih resolusi\n"
+            "/subtitle — pilih bahasa\n"
+            "/search — cari anime\n"
+            "/batch — download semua episode\n"
+            "/history — riwayat download\n"
+            "/stats — statistik\n\n"
+            "💡 Atau gunakan tombol di menu utama."
         )
+        kb = back_kb()
         await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
 
-    @app.on_callback_query(filters.regex("^q_(best|2160p|1080p|720p|480p|360p)$"))
-    async def quality_cb(client: Client, callback: CallbackQuery) -> None:
-        uid = callback.from_user.id
-        quality = callback.data.split("_", 1)[1]
-        user_quality[uid] = quality
-        await callback.message.edit_text(
-            f"✅ Quality diubah ke <code>{quality}</code>",
-            parse_mode=enums.ParseMode.HTML,
-        )
-
-    @app.on_message(filters.command("subtitle"))
-    async def subtitle_cmd(client: Client, message: Message) -> None:
+    # ── Stats ───────────────────────────────────────────
+    @app.on_message(filters.command("stats"))
+    async def stats_cmd(client: Client, message: Message) -> None:
         uid = message.from_user.id
-        current = get_subtitle(uid)
-        kb = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("🇬🇧 English", callback_data="sub_en"),
-                    InlineKeyboardButton("🇮🇩 Indonesia", callback_data="sub_id"),
-                ],
-                [
-                    InlineKeyboardButton("🇯🇵 Japanese", callback_data="sub_jp"),
-                ],
-            ]
-        )
+        stats = get_user_stats(settings.history_dir, uid)
         text = (
-            f"💬 <b>Subtitle Selection</b>\n\n"
-            f"Sekarang: <code>{current}</code>\n\n"
-            "Pilih bahasa subtitle:\n"
-            "• <b>English</b> — Subtitle Inggris\n"
-            "• <b>Indonesia</b> — Subtitle Indonesia\n"
-            "• <b>Japanese</b> — Subtitle Jepang"
+            f"📊 <b>Stats</b>\n\n"
+            f"📥 Total download: <b>{stats['total_downloads']}</b>\n"
+            f"💾 Total size: <b>{human_size(stats['total_size'])}</b>"
         )
+        if stats["formats"]:
+            text += "\n\n📊 <b>Quality Distribution</b>\n"
+            for q, count in stats["formats"].items():
+                text += f"• {q}: <b>{count}</b>\n"
+        kb = back_kb()
         await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
 
-    @app.on_callback_query(filters.regex("^sub_(en|id|jp)$"))
-    async def subtitle_cb(client: Client, callback: CallbackQuery) -> None:
-        uid = callback.from_user.id
-        subtitle = callback.data.split("_", 1)[1]
-        user_subtitle[uid] = subtitle
-        await callback.message.edit_text(
-            f"✅ Subtitle diubah ke <code>{subtitle}</code>",
-            parse_mode=enums.ParseMode.HTML,
-        )
-
-    @app.on_message(filters.command("search"))
-    async def search_cmd(client: Client, message: Message) -> None:
-        text = (
-            "🔍 <b>Search Anime</b>\n\n"
-            "Kirim judul anime yang ingin dicari.\n"
-            "Contoh: <code>Yuki</code>\n\n"
-            "Bot akan mencari di hstream.moe."
-        )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML)
-        (settings.cookies_dir / f".await_search_{message.from_user.id}").touch()
-
-    @app.on_message(filters.command("batch"))
-    async def batch_cmd(client: Client, message: Message) -> None:
-        text = (
-            "📦 <b>Batch Download</b>\n\n"
-            "Kirim link series untuk download semua episode.\n"
-            "Contoh: <code>https://hstream.moe/hentai/title</code>\n\n"
-            "⚠️ Tanpa angka episode di akhir URL."
-        )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML)
-        (settings.cookies_dir / f".await_batch_{message.from_user.id}").touch()
-
+    # ── Cancel ──────────────────────────────────────────
     @app.on_message(filters.command("cancel"))
     async def cancel_cmd(client: Client, message: Message) -> None:
         uid = message.from_user.id
@@ -426,6 +462,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
         else:
             await message.reply("Tidak ada job yang berjalan.")
 
+    # ── Clear ───────────────────────────────────────────
     @app.on_message(filters.command("clear"))
     async def clear_cmd(client: Client, message: Message) -> None:
         uid = message.from_user.id
@@ -441,126 +478,101 @@ def register_handlers(app: Client, settings: Settings) -> None:
                     removed += 1
             except Exception:
                 pass
-        await message.reply(f"🧹 Berhasil hapus {removed} item(s).")
+        kb = back_kb()
+        await message.reply(f"🧹 Berhasil hapus {removed} item(s).", reply_markup=kb)
 
-    @app.on_message(filters.command("cookies"))
-    async def cookies_cmd(client: Client, message: Message) -> None:
-        uid = message.from_user.id
-        has_cookies = user_cookies_path(uid).exists()
-        status = "✅ Sudah ada" if has_cookies else "❌ Belum ada"
-        text = (
-            "🍪 <b>Setup Cookies</b>\n\n"
-            f"Status: {status}\n\n"
-            "Kirim file <code>cookies.txt</code> (Netscape format)\n"
-            "sebagai document/folder.\n\n"
-            "💡 Cookies dibutuhkan untuk download.\n"
-            "Tanpa cookies, beberapa video mungkin gagal."
-        )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML)
-        (settings.cookies_dir / f".await_{uid}").touch()
-
-    @app.on_message(filters.command("thumb"))
-    async def thumb_cmd(client: Client, message: Message) -> None:
-        uid = message.from_user.id
-        path = user_thumb_path(uid)
-        if message.reply_to_message and message.reply_to_message.photo:
-            dl = await message.reply_to_message.download()
-            out = create_user_thumb(Path(dl), uid)
-            Path(dl).unlink(missing_ok=True)
-            if out:
-                await message.reply("✅ Thumbnail tersimpan!")
-            else:
-                await message.reply("❌ Gagal simpan thumbnail (butuh ffmpeg).")
-            return
-        (settings.cookies_dir / f".await_thumb_{uid}").touch()
-        status = "✅ Sudah ada" if path.exists() else "❌ Belum ada"
-        text = (
-            "🖼 <b>Setup Thumbnail</b>\n\n"
-            f"Status: {status}\n\n"
-            "Kirim foto untuk dijadikan thumbnail upload.\n"
-            "Thumbnail digunakan untuk semua upload.\n\n"
-            "💡 Reply foto dengan /thumb juga bisa."
-        )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML)
-
-    @app.on_message(filters.photo)
-    async def handle_photo(client: Client, message: Message) -> None:
-        uid = message.from_user.id
-        flag = settings.cookies_dir / f".await_thumb_{uid}"
-        if not flag.exists():
-            return
-        dl = await message.download()
-        out = create_user_thumb(Path(dl), uid)
-        Path(dl).unlink(missing_ok=True)
-        flag.unlink(missing_ok=True)
-        if out:
-            await message.reply("✅ Thumbnail tersimpan!")
-        else:
-            await message.reply("❌ Gagal simpan thumbnail.")
-
+    # ── Document Handler (cookies) ──────────────────────
     @app.on_message(filters.document)
     async def handle_document(client: Client, message: Message) -> None:
         uid = message.from_user.id
-        flag = settings.cookies_dir / f".await_{uid}"
-        if not flag.exists():
+        if not has_flag("await", uid):
             return
         doc: Document = message.document
         name = (doc.file_name or "").lower()
         if not name.endswith((".txt", ".cookies")):
+            kb = back_kb("menu_settings")
             await message.reply(
-                "❌ File tidak valid.\n"
-                "Kirim file <code>cookies.txt</code> (Netscape format).",
+                "❌ File tidak valid.\nKirim file <code>cookies.txt</code>.",
                 parse_mode=enums.ParseMode.HTML,
+                reply_markup=kb,
             )
             return
         dest = user_cookies_path(uid)
         await message.download(file_name=str(dest))
-        flag.unlink(missing_ok=True)
+        clear_flag("await", uid)
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
+        )
         await message.reply(
-            f"✅ Cookies tersimpan!\n"
-            f"📏 Size: <code>{human_size(dest.stat().st_size)}</code>",
+            f"✅ Cookies tersimpan!\n📏 {human_size(dest.stat().st_size)}",
             parse_mode=enums.ParseMode.HTML,
+            reply_markup=kb,
         )
 
+    # ── Photo Handler (thumbnail) ───────────────────────
+    @app.on_message(filters.photo)
+    async def handle_photo(client: Client, message: Message) -> None:
+        uid = message.from_user.id
+        if not has_flag("await_thumb", uid):
+            return
+        dl = await message.download()
+        out = create_user_thumb(Path(dl), uid)
+        Path(dl).unlink(missing_ok=True)
+        clear_flag("await_thumb", uid)
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
+        )
+        if out:
+            await message.reply("✅ Thumbnail tersimpan!", reply_markup=kb)
+        else:
+            await message.reply("❌ Gagal simpan thumbnail.", reply_markup=kb)
+
+    # ── Text Handler (URLs + search + batch) ────────────
     @app.on_message(filters.text & ~filters.command([
-        "start", "help", "status", "cancel", "clear",
-        "cookies", "thumb", "quality", "subtitle", "search", "batch",
+        "start", "help", "cancel", "clear", "stats",
     ]))
     async def handle_text(client: Client, message: Message) -> None:
         uid = message.from_user.id
         text = (message.text or "").strip()
 
-        if (settings.cookies_dir / f".await_search_{uid}").exists():
-            (settings.cookies_dir / f".await_search_{uid}").unlink(missing_ok=True)
+        if has_flag("await_search", uid):
+            clear_flag("await_search", uid)
             await _handle_search(client, message, text, settings, executor)
             return
 
-        if (settings.cookies_dir / f".await_batch_{uid}").exists():
-            (settings.cookies_dir / f".await_batch_{uid}").unlink(missing_ok=True)
+        if has_flag("await_batch", uid):
+            clear_flag("await_batch", uid)
             await _handle_batch(client, message, text, settings, executor, active_jobs, user_dir, user_cookies_path, get_quality, get_subtitle)
             return
 
         urls = URL_RE.findall(text)
         if not urls:
-            text = (
-                "🔍 Link tidak ditemukan.\n\n"
-                "Format yang benar:\n"
-                "<code>https://hstream.moe/hentai/title-1</code>\n\n"
-                "💡 Kirim satu link per line untuk multiple episodes."
+            kb = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("◀️ Kembali", callback_data="menu")]]
             )
-            await message.reply(text, parse_mode=enums.ParseMode.HTML)
+            await message.reply(
+                "🔍 Link tidak ditemukan.\n\n"
+                "Format: <code>https://hstream.moe/hentai/title-1</code>",
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=kb,
+            )
             return
+
         seen: set[str] = set()
         urls = [u for u in urls if not (u in seen or seen.add(u))]
+
         if uid in active_jobs:
             kb = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🛑 Batalkan", callback_data="cancel_job")]]
             )
             await message.reply(
-                "⏳ Kamu sudah punya job yang berjalan.\nTunggu selesai atau batalkan.",
+                "⏳ Job sudah berjalan.",
                 reply_markup=kb,
             )
             return
+
+        quality = get_quality(uid)
+        subtitle = get_subtitle(uid)
 
         preview_urls = urls[:5]
         preview_text = "🔍 <b>Preview</b>\n\n"
@@ -570,38 +582,29 @@ def register_handlers(app: Client, settings: Settings) -> None:
         if len(urls) > 5:
             preview_text += f"... dan {len(urls) - 5} lagi\n"
         preview_text += f"\nTotal: <b>{len(urls)}</b> episode"
-
-        quality = get_quality(uid)
-        subtitle = get_subtitle(uid)
         preview_text += f"\nQuality: <code>{quality}</code>"
         preview_text += f"\nSubtitle: <code>{subtitle}</code>"
 
+        url_hash = "_".join(str(hash(u) % 10000) for u in urls[:3])
         kb = InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("✅ Download", callback_data=f"dl_{'_'.join(str(hash(u) % 10000) for u in urls[:3])}"),
+                    InlineKeyboardButton(f"✅ Download ({len(urls)} eps)", callback_data=f"dl_{url_hash}"),
+                ],
+                [
                     InlineKeyboardButton("❌ Batal", callback_data="cancel_job"),
                 ],
             ]
         )
         await message.reply(preview_text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
 
-    @app.on_callback_query(filters.regex("^cancel_job$"))
-    async def cancel_job_cb(client: Client, callback: CallbackQuery) -> None:
-        uid = callback.from_user.id
-        if uid in active_jobs:
-            active_jobs.discard(uid)
-            await callback.message.edit_text("🛑 Job dibatalkan.")
-        else:
-            await callback.message.edit_text("Tidak ada job yang berjalan.")
-
+    # ── Download Callback ───────────────────────────────
     @app.on_callback_query(filters.regex("^dl_"))
     async def download_cb(client: Client, callback: CallbackQuery) -> None:
         uid = callback.from_user.id
         if uid in active_jobs:
             await callback.message.edit_text("⏳ Job sudah berjalan.")
             return
-        await callback.message.edit_text("🚀 Memulai download...")
         text = callback.message.text or ""
         url_match = re.findall(r"<code>([^<]+)</code>", text)
         if not url_match:
@@ -613,9 +616,21 @@ def register_handlers(app: Client, settings: Settings) -> None:
             return
         active_jobs.add(uid)
         try:
+            await callback.message.edit_text("🚀 Memulai download...")
             await _process_urls(client, callback.message, urls, settings, executor, active_jobs, user_dir, user_cookies_path, get_quality, get_subtitle)
         finally:
             active_jobs.discard(uid)
+
+    # ── Cancel Job Callback ─────────────────────────────
+    @app.on_callback_query(filters.regex("^cancel_job$"))
+    async def cancel_job_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        if uid in active_jobs:
+            active_jobs.discard(uid)
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("◀️ Kembali", callback_data="menu")]]
+        )
+        await callback.message.edit_text("🛑 Job dibatalkan.", reply_markup=kb)
 
 
 async def _handle_search(
@@ -626,9 +641,11 @@ async def _handle_search(
     executor: ThreadPoolExecutor,
 ) -> None:
     uid = message.from_user.id
+    kb = back_kb()
     status = await message.reply(
         f"🔍 Mencari <code>{html_escape(query)}</code>...",
         parse_mode=enums.ParseMode.HTML,
+        reply_markup=kb,
     )
 
     loop = asyncio.get_running_loop()
@@ -674,26 +691,21 @@ async def _handle_search(
     results = await loop.run_in_executor(executor, _search)
 
     if not results:
+        kb = back_kb()
         await status.edit_text(
             "🔍 Tidak ditemukan hasil.",
             parse_mode=enums.ParseMode.HTML,
+            reply_markup=kb,
         )
         return
 
-    text = f"🔍 <b>Hasil Pencarian</b> — {len(results)} result(s)\n\n"
-    kb_buttons: list[list[InlineKeyboardButton]] = []
+    text = f"🔍 <b>Hasil Pencarian</b>\n\n"
     for i, r in enumerate(results, 1):
-        text += f"{i}. <b>{html_escape(r['title'])}</b>\n"
+        text += f"{i}. <b>{html_escape(r['title'])}</code>\n"
         text += f"   <code>{r['url']}</code>\n"
-        if i <= 5:
-            kb_buttons.append([
-                InlineKeyboardButton(
-                    f"{i}. {r['title'][:20]}",
-                    callback_data=f"search_{i}",
-                ),
-            ])
 
-    await status.edit_text(text, parse_mode=enums.ParseMode.HTML)
+    kb = back_kb()
+    await status.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
 
 
 async def _handle_batch(
@@ -710,21 +722,24 @@ async def _handle_batch(
 ) -> None:
     uid = message.from_user.id
     if uid in active_jobs:
-        await message.reply("⏳ Job sudah berjalan.")
+        kb = back_kb()
+        await message.reply("⏳ Job sudah berjalan.", reply_markup=kb)
         return
 
     if not URL_RE.match(series_url):
+        kb = back_kb()
         await message.reply(
-            "❌ Link tidak valid.\n"
-            "Format: <code>https://hstream.moe/hentai/title</code>",
+            "❌ Link tidak valid.\nFormat: <code>https://hstream.moe/hentai/title</code>",
             parse_mode=enums.ParseMode.HTML,
+            reply_markup=kb,
         )
         return
 
+    kb = back_kb()
     status = await message.reply(
-        f"📦 <b>Mencari episodes...</b>\n\n"
-        f"<code>{html_escape(series_url)}</code>",
+        f"📦 <b>Mencari episodes...</b>\n\n<code>{html_escape(series_url)}</code>",
         parse_mode=enums.ParseMode.HTML,
+        reply_markup=kb,
     )
 
     loop = asyncio.get_running_loop()
@@ -737,9 +752,11 @@ async def _handle_batch(
     )
 
     if not episodes:
+        kb = back_kb()
         await status.edit_text(
             "❌ Tidak ditemukan episode.",
             parse_mode=enums.ParseMode.HTML,
+            reply_markup=kb,
         )
         return
 
@@ -755,15 +772,8 @@ async def _handle_batch(
     )
     kb = InlineKeyboardMarkup(
         [
-            [
-                InlineKeyboardButton(
-                    f"✅ Download All ({len(episodes)} eps)",
-                    callback_data=f"batch_{uid}_{len(episodes)}",
-                ),
-            ],
-            [
-                InlineKeyboardButton("❌ Batal", callback_data="cancel_job"),
-            ],
+            [InlineKeyboardButton(f"✅ Download All ({len(episodes)} eps)", callback_data="confirm_batch")],
+            [InlineKeyboardButton("❌ Batal", callback_data="cancel_job")],
         ]
     )
     await status.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
@@ -807,8 +817,7 @@ async def _process_urls(
         f"📺 <b>{total_eps}</b> episode dari <b>{total_series}</b> series\n"
         f"🍪 Cookies: {'✅' if cookies_file else '❌'}\n"
         f"🎬 Quality: <code>{quality}</code>\n"
-        f"💬 Subtitle: <code>{subtitle}</code>\n"
-        f"📤 Upload via: <b>Kurigram MTProto</b>",
+        f"💬 Subtitle: <code>{subtitle}</code>",
         parse_mode=enums.ParseMode.HTML,
     )
 
@@ -887,11 +896,13 @@ async def _process_urls(
                 text = (
                     f"❌ <b>[{idx}/{total_eps}]</b> Gagal download\n\n"
                     f"<code>{url}</code>\n\n"
-                    f"Error: <code>{html_escape(str(e))}</code>\n\n"
-                    "💡 Coba /cookies dulu, atau kirim link lain."
+                    f"Error: <code>{html_escape(str(e))}</code>"
                 )
                 kb = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔄 Coba Lagi", callback_data="retry_download")]]
+                    [
+                        [InlineKeyboardButton("🔄 Retry", callback_data="retry_download")],
+                        [InlineKeyboardButton("⏭ Skip", callback_data="skip_download")],
+                    ]
                 )
                 await progress_edit(status, text)
                 continue
@@ -963,10 +974,14 @@ async def _process_urls(
 
             if settings.notify_dm and uid != message.chat.id:
                 try:
+                    kb = InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("📊 Status", callback_data="menu_status")]]
+                    )
                     await client.send_message(
                         chat_id=uid,
                         text=f"✅ <b>Upload selesai</b>\n\n<code>{final_path.name}</code>",
                         parse_mode=enums.ParseMode.HTML,
+                        reply_markup=kb,
                     )
                 except Exception:
                     pass
@@ -979,9 +994,16 @@ async def _process_urls(
         if removed > 0:
             logger.info("Auto-deleted %d old files", removed)
 
+    kb = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📊 Status", callback_data="menu_status"),
+                InlineKeyboardButton("🏠 Menu", callback_data="menu"),
+            ],
+        ]
+    )
     await progress_edit(
         status,
         f"🎉 <b>Selesai!</b>\n\n"
-        f"📺 {total_eps} episode dari {total_series} series\n"
-        "Ketik /status atau /clear untuk kelola file.",
+        f"📺 {total_eps} episode dari {total_series} series",
     )
