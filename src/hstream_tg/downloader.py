@@ -1,47 +1,43 @@
-#!/usr/bin/env python3
-"""
-Core download + subtitle remux logic for HStream-TG.
-Ported/improved from Hstream-Extractor (page scrape + player API + known hosts).
-Safe to call from async code via to_thread.
-"""
+"""Core download + subtitle remux logic for HStream-TG.
 
-from __future__ import annotations
+Safe to call from async code via asyncio.to_thread.
+"""
 
 import html as html_lib
 import re
 import shutil
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
 from urllib.parse import unquote
 
 import requests
-from tqdm import tqdm
 
+from hstream_tg.utils import human_size, progress_bar
 
-ProgressCallback = Callable[[str], None]
+type ProgressCallback = Callable[[str], None]
 
 
 @dataclass
 class SeriesInfo:
-    """Metadata scraped from the series page (e.g. /hentai/ane-to-boin)."""
     title: str = ""
     title_jp: str = ""
     year: str = ""
     release_date: str = ""
     upload_date: str = ""
     studio: str = ""
-    tags: List[str] = field(default_factory=list)
-    episodes: Optional[int] = None
+    tags: list[str] = field(default_factory=list)
+    episodes: int | None = None
     description: str = ""
     poster_url: str = ""
     series_url: str = ""
     status: str = ""
 
 
-def ensure_dependencies(progress: Optional[ProgressCallback] = None) -> None:
+def ensure_dependencies(progress: ProgressCallback | None = None) -> None:
     def log(msg: str) -> None:
         if progress:
             progress(msg)
@@ -53,7 +49,7 @@ def ensure_dependencies(progress: Optional[ProgressCallback] = None) -> None:
         subprocess.run(
             [
                 sys.executable, "-m", "pip", "install", "--upgrade",
-                "yt-dlp", "requests", "tqdm", "hanime-plugin",
+                "yt-dlp", "requests", "hanime-plugin",
             ],
             check=True,
             capture_output=True,
@@ -62,38 +58,20 @@ def ensure_dependencies(progress: Optional[ProgressCallback] = None) -> None:
         raise RuntimeError(f"pip install failed: {e}") from e
 
     for pkg in ("aria2c", "ffmpeg"):
-        if subprocess.run(["which", pkg], capture_output=True).returncode != 0:
+        if shutil.which(pkg) is None:
             log(f"WARNING: '{pkg}' not found in PATH – quality / speed may suffer.")
     log("Dependency check done.")
-
-
-def _human_bytes(n: float) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if abs(n) < 1024:
-            return f"{n:.2f}{unit}"
-        n /= 1024
-    return f"{n:.2f}TB"
-
-
-def _progress_bar(pct: float, width: int = 10) -> str:
-    pct = max(0.0, min(100.0, pct))
-    filled = int(round(width * pct / 100.0))
-    filled = min(width, max(0, filled))
-    return "●" * filled + "○" * (width - filled)
 
 
 def download_video(
     url: str,
     dest: Path,
-    cookies_file: Optional[Path] = None,
-    progress: Optional[ProgressCallback] = None,
+    cookies_file: Path | None = None,
+    progress: ProgressCallback | None = None,
 ) -> Path:
-    """Download with yt-dlp Python API + live progress callbacks."""
     def log(msg: str) -> None:
         if progress:
             progress(msg)
-
-    import time
 
     try:
         import yt_dlp
@@ -130,14 +108,14 @@ def download_video(
             last_filename[0] = name
             short = Path(name).name if name else "download"
             eta_s = f"{int(eta)}s" if isinstance(eta, (int, float)) and eta is not None else "—"
-            bar = _progress_bar(pct)
+            bar = progress_bar(pct)
             progress(
                 f"📥 <b>Download</b>\n"
                 f"<code>{short}</code>\n"
                 f"{bar} <b>{pct:.2f}%</b>\n"
-                f"Processed: {_human_bytes(done)}\n"
-                f"Size: {_human_bytes(total) if total else '—'}\n"
-                f"Speed: {_human_bytes(speed)}/s\n"
+                f"Processed: {human_size(done)}\n"
+                f"Size: {human_size(total) if total else '—'}\n"
+                f"Speed: {human_size(speed)}/s\n"
                 f"ETA: {eta_s}\n"
                 f"Tool: yt-dlp"
             )
@@ -146,11 +124,11 @@ def download_video(
             last_filename[0] = name
             progress(f"✅ Download finished\n<code>{Path(name).name}</code>")
 
-    last_err: Optional[Exception] = None
+    last_err: Exception | None = None
     log(f"Downloading: {url}")
 
     for fmt in format_tries:
-        ydl_opts = {
+        ydl_opts: dict = {
             "format": fmt,
             "outtmpl": output_template,
             "noplaylist": True,
@@ -206,7 +184,7 @@ def download_subtitle(sub_url: str, sub_path: Path) -> bool:
         return False
 
 
-def _cookies_header(cookies_file: Optional[Path]) -> Optional[str]:
+def _cookies_header(cookies_file: Path | None) -> str | None:
     if not cookies_file or not cookies_file.is_file():
         return None
     parts = []
@@ -221,9 +199,9 @@ def _cookies_header(cookies_file: Optional[Path]) -> Optional[str]:
 
 def resolve_subtitle_url(
     page_url: str,
-    cookies_file: Optional[Path] = None,
-    progress: Optional[ProgressCallback] = None,
-) -> Optional[str]:
+    cookies_file: Path | None = None,
+    progress: ProgressCallback | None = None,
+) -> str | None:
     def log(msg: str) -> None:
         if progress:
             progress(msg)
@@ -354,8 +332,8 @@ def episode_url_to_series_url(episode_url: str) -> str:
 
 def scrape_series_info(
     episode_or_series_url: str,
-    cookies_file: Optional[Path] = None,
-    progress: Optional[ProgressCallback] = None,
+    cookies_file: Path | None = None,
+    progress: ProgressCallback | None = None,
 ) -> SeriesInfo:
     def log(msg: str) -> None:
         if progress:
@@ -456,10 +434,10 @@ def scrape_series_info(
 def process_url(
     url: str,
     dest: Path,
-    series_slug: Optional[str] = None,
+    series_slug: str | None = None,
     year: str = "2024",
-    cookies_file: Optional[Path] = None,
-    progress: Optional[ProgressCallback] = None,
+    cookies_file: Path | None = None,
+    progress: ProgressCallback | None = None,
 ) -> Path:
     def log(msg: str) -> None:
         if progress:

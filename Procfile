@@ -1,1 +1,1 @@
-worker: bash -c "python update.py || true; exec python -u bot.py"
+worker: uv run python -m hstream_tg

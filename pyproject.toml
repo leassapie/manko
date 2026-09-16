@@ -1,0 +1,66 @@
+[project]
+name = "hstream-tg"
+version = "2.0.0"
+description = "Telegram bot for hstream.moe downloads + subtitle remux via MTProto"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.14"
+authors = [{ name = "zenin-373" }]
+
+dependencies = [
+    "kurigram[fast]>=2.2.24",
+    "pydantic-settings>=2.0",
+    "pydantic>=2.13,<2.14",
+    "yt-dlp>=2024.1.0",
+    "requests>=2.28.0",
+    "hanime-plugin>=2025.10.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+hstream-tg = "hstream_tg.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "src"
+module-name = "hstream_tg"
+
+# ── Ruff ──────────────────────────────────────────────
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ── MyPy ──────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = ["yt_dlp.*", "hanime_plugin.*", "tqdm.*"]
+ignore_missing_imports = true
+
+# ── Pytest ────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,29 +1,26 @@
-#!/usr/bin/env python3
 """Aeon-style leech thumbnails for HStream-TG.
 
-Priority (Aeon TelegramUploader / leech):
+Priority:
   1. User custom thumb  →  thumbnails/{user_id}.jpg  (/thumb)
   2. Mid-video frame    →  ffmpeg scale 640
 
 Series poster is ONLY used for the separate photo post, never as file thumb.
 """
-from __future__ import annotations
 
 import logging
 import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import requests
 
+from hstream_tg.config import get_settings
+
 logger = logging.getLogger("hstream-tg")
 
-THUMB_DIR = Path("thumbnails")
 
-
-def _ffmpeg() -> Optional[str]:
+def _ffmpeg() -> str | None:
     for name in ("ffmpeg", "xtra"):
         p = shutil.which(name)
         if p:
@@ -31,7 +28,7 @@ def _ffmpeg() -> Optional[str]:
     return None
 
 
-def _ffprobe() -> Optional[str]:
+def _ffprobe() -> str | None:
     for name in ("ffprobe", "ffmpeg", "xtra"):
         p = shutil.which(name)
         if p:
@@ -40,16 +37,16 @@ def _ffprobe() -> Optional[str]:
 
 
 def user_thumb_path(user_id: int) -> Path:
-    return THUMB_DIR / f"{user_id}.jpg"
+    return get_settings().thumb_dir / f"{user_id}.jpg"
 
 
-def create_user_thumb(photo_path: Path, user_id: int) -> Optional[Path]:
-    """Save a photo as the user's permanent leech thumbnail."""
+def create_user_thumb(photo_path: Path, user_id: int) -> Path | None:
     ff = _ffmpeg()
     if not ff:
         logger.warning("ffmpeg not found – cannot save user thumb")
         return None
-    THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    settings = get_settings()
+    settings.thumb_dir.mkdir(parents=True, exist_ok=True)
     out = user_thumb_path(user_id)
     try:
         subprocess.run(
@@ -71,8 +68,7 @@ def create_user_thumb(photo_path: Path, user_id: int) -> Optional[Path]:
     return None
 
 
-def download_poster_thumb(poster_url: str, dest_dir: Path) -> Optional[Path]:
-    """Poster for the series photo post only (not document thumb)."""
+def download_poster_thumb(poster_url: str, dest_dir: Path) -> Path | None:
     if not poster_url:
         return None
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -150,8 +146,7 @@ def _video_duration(video_path: Path) -> float:
     return 0.0
 
 
-def extract_video_thumb(video_path: Path, dest_dir: Path) -> Optional[Path]:
-    """Mid-point frame, scale 640 — matches Aeon get_video_thumbnail."""
+def extract_video_thumb(video_path: Path, dest_dir: Path) -> Path | None:
     ff = _ffmpeg()
     if not ff:
         logger.warning("ffmpeg not found – skip video thumb")
@@ -205,10 +200,9 @@ def extract_video_thumb(video_path: Path, dest_dir: Path) -> Optional[Path]:
 def resolve_doc_thumb(
     video_path: Path,
     user_id: int,
-    series_thumb: Optional[Path] = None,
-    work_dir: Optional[Path] = None,
-) -> Optional[str]:
-    """Aeon leech: user custom → mid-video frame. Never series poster."""
+    series_thumb: Path | None = None,
+    work_dir: Path | None = None,
+) -> str | None:
     ut = user_thumb_path(user_id)
     if ut.exists() and ut.stat().st_size > 0:
         logger.info("thumb: user custom %s", ut)

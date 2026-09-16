@@ -10,6 +10,10 @@ dist/
 .venv/
 venv/
 env/
+*.egg
+
+# uv
+.python-version
 
 # Downloads / media
 downloads/
@@ -20,6 +24,9 @@ downloads/
 *.srt
 *.vtt
 *.ts
+
+# Thumbnails
+thumbnails/
 
 # OS / IDE
 .DS_Store
@@ -42,3 +49,5 @@ cookies.txt
 # Bot data
 data/
 user_cookies/
+.agents/
+skills-lock.json
