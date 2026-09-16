@@ -1,4 +1,4 @@
-# HStream-TG
+# Mangko
 
 Telegram bot for [hstream.moe](https://hstream.moe) — downloads episodes via yt-dlp, resolves English `.ass` subtitles, remuxes to MKV via ffmpeg, and uploads up to ~2 GB through MTProto (Kurigram). No Bot API size limit.
 
@@ -30,8 +30,8 @@ uv run python -m hstream_tg        # start bot
 
 Or Docker:
 ```bash
-docker build -t hstream-tg .
-docker run -d --env-file .env hstream-tg
+docker build -t mangko .
+docker run -d --env-file .env mangko
 ```
 
 ## Architecture

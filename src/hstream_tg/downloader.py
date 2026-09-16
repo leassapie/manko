@@ -1,4 +1,4 @@
-"""Core download + subtitle remux logic for HStream-TG.
+"""Core download + subtitle remux logic for Mangko.
 
 Safe to call from async code via asyncio.to_thread.
 """

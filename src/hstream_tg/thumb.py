@@ -1,4 +1,4 @@
-"""Aeon-style leech thumbnails for HStream-TG.
+"""Aeon-style leech thumbnails for Mangko.
 
 Priority:
   1. User custom thumb  →  thumbnails/{user_id}.jpg  (/thumb)
@@ -17,7 +17,7 @@ import requests
 
 from hstream_tg.config import get_settings
 
-logger = logging.getLogger("hstream-tg")
+logger = logging.getLogger("mangko")
 
 
 def _ffmpeg() -> str | None:

@@ -1,4 +1,4 @@
-"""Aeon-style upstream sync for HStream-TG.
+"""Aeon-style upstream sync for Mangko.
 
 On Heroku restart (via start.sh) this pulls the latest code from UPSTREAM_REPO.
 """
@@ -40,7 +40,7 @@ def main() -> int:
     cmd = (
         f"git init -q "
         f"&& git config --global user.email hstream@local "
-        f"&& git config --global user.name hstream-tg "
+        f"&& git config --global user.name mangko "
         f"&& git add . "
         f"&& git commit -sm update -q || true "
         f"&& git remote add origin {settings.upstream_repo} "

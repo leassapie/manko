@@ -55,7 +55,7 @@ on:
         description: "Upstream git repo URL"
         required: false
         type: string
-        default: "https://github.com/zenin-373/Hstream-TG.git"
+        default: "https://github.com/leassapie/manko.git"
 
 jobs:
   deploy:
@@ -122,7 +122,7 @@ jobs:
             API_ID="$API_ID" \
             API_HASH="$API_HASH" \
             UPDATE_ON_START="${UPDATE_ON_START:-true}" \
-            UPSTREAM_REPO="${UPSTREAM_REPO:-https://github.com/zenin-373/Hstream-TG.git}" \
+            UPSTREAM_REPO="${UPSTREAM_REPO:-https://github.com/leassapie/manko.git}" \
             UPSTREAM_BRANCH=main \
             --app "$APP"
 

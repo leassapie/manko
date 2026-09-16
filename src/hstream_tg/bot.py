@@ -54,7 +54,7 @@ from hstream_tg.utils import (
     sys_stats_line,
 )
 
-logger = logging.getLogger("hstream-tg")
+logger = logging.getLogger("mangko")
 
 URL_RE = re.compile(r"https?://(?:www\.)?hstream\.moe/hentai/[\w\-]+/?", re.I)
 
@@ -104,7 +104,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
             ]
         )
         text = (
-            "👋 <b>HStream-TG</b>\n\n"
+            "👋 <b>Mangko</b>\n\n"
             "Download episode hstream.moe langsung ke Telegram.\n"
             "Quality terbaik, subtitle Inggris, remux MKV.\n\n"
             "⚡ <b>Quick Start</b>\n"

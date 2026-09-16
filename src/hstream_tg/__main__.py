@@ -10,7 +10,7 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
     level=logging.INFO,
 )
-logger = logging.getLogger("hstream-tg")
+logger = logging.getLogger("mangko")
 
 
 def main() -> None:
@@ -27,7 +27,7 @@ def main() -> None:
     logger.info("Checking dependencies…")
     ensure_dependencies()
 
-    logger.info("Starting HStream-TG with Kurigram (MTProto)…")
+    logger.info("Starting Mangko with Kurigram (MTProto)…")
     logger.info("UPLOAD_CHANNEL=%s  DUMP_CHANNEL=%s", settings.upload_chat, settings.dump_chat)
 
     app = create_app(settings)

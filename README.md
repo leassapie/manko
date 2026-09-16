@@ -1,4 +1,4 @@
-# HStream-TG
+# Mangko
 
 Telegram bot for **[hstream.moe](https://hstream.moe)** – bulk download, English subtitle remux, and leech.
 
@@ -61,8 +61,8 @@ brew install ffmpeg aria2
 ### 2. Clone & install
 
 ```bash
-git clone https://github.com/zenin-373/Hstream-TG.git
-cd Hstream-TG
+git clone https://github.com/leassapie/manko.git
+cd manko
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -105,9 +105,9 @@ os.environ["PATH"] = os.path.expanduser("~/.deno/bin") + os.pathsep + os.environ
 
 # 2) clone + pip
 %cd /content
-!rm -rf Hstream-TG
-!git clone --depth 1 https://github.com/zenin-373/Hstream-TG.git
-%cd Hstream-TG
+!rm -rf manko
+!git clone --depth 1 https://github.com/leassapie/manko.git
+%cd manko
 !pip install -q -r requirements.txt
 
 # 3) .env  (fill these)
@@ -131,25 +131,25 @@ SESSION_NAME=hstream_tg
 ## Docker
 
 ```bash
-docker build -t hstream-tg .
+docker build -t mangko .
 
 docker run -d \
-  --name hstream-tg \
+  --name mangko \
   -e BOT_TOKEN=your_token \
   -e API_ID=your_api_id \
   -e API_HASH=your_api_hash \
   -v $(pwd)/downloads:/app/downloads \
   -v $(pwd)/user_cookies:/app/user_cookies \
-  hstream-tg
+  mangko
 ```
 
 Or:
 
 ```bash
-docker run -d --name hstream-tg --env-file .env \
+docker run -d --name mangko --env-file .env \
   -v $(pwd)/downloads:/app/downloads \
   -v $(pwd)/user_cookies:/app/user_cookies \
-  hstream-tg
+  mangko
 ```
 
 ## Bot commands
