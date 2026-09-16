@@ -24,11 +24,29 @@ class Settings(BaseSettings):
     download_root: Path = Path("downloads")
     cookies_dir: Path = Path("user_cookies")
     thumb_dir: Path = Path("thumbnails")
+    history_dir: Path = Path("download_history")
     keep_files: bool = False
     workers: int = 2
     session_name: str = "hstream_tg"
     upload_channel: str | None = None
     dump_channel: str | None = None
+
+    # ── Quality & Subtitle ─────────────────────────────
+    default_quality: str = "best"
+    default_subtitle: str = "en"
+
+    # ── Auto-delete ────────────────────────────────────
+    auto_delete_days: int = 0
+
+    # ── Naming template ────────────────────────────────
+    naming_template: str = "{title} - Episode {episode}"
+
+    # ── Premium queue ──────────────────────────────────
+    max_concurrent_per_user: int = 1
+    max_daily_downloads: int = 50
+
+    # ── Notification ───────────────────────────────────
+    notify_dm: bool = True
 
     # ── Heroku auto-update ──────────────────────────────
     upstream_repo: str = "https://github.com/leassapie/manko.git"
@@ -49,6 +67,7 @@ class Settings(BaseSettings):
         self.download_root.mkdir(parents=True, exist_ok=True)
         self.cookies_dir.mkdir(parents=True, exist_ok=True)
         self.thumb_dir.mkdir(parents=True, exist_ok=True)
+        self.history_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _parse_chat_id(raw: str | None) -> int | str | None:

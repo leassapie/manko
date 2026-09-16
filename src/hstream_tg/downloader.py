@@ -4,6 +4,7 @@ Safe to call from async code via asyncio.to_thread.
 """
 
 import html as html_lib
+import json
 import re
 import shutil
 import subprocess
@@ -18,6 +19,21 @@ import requests
 from hstream_tg.utils import human_size, progress_bar
 
 type ProgressCallback = Callable[[str], None]
+
+QUALITY_MAP = {
+    "best": "best",
+    "2160p": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+    "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]",
+    "480p": "bestvideo[height<=480]+bestaudio/best[height<=480]",
+    "360p": "bestvideo[height<=360]+bestaudio/best[height<=360]",
+}
+
+SUBTITLE_MAP = {
+    "en": "eng",
+    "id": "ind",
+    "jp": "jpn",
+}
 
 
 @dataclass
@@ -65,6 +81,7 @@ def download_video(
     dest: Path,
     cookies_file: Path | None = None,
     progress: ProgressCallback | None = None,
+    quality: str = "best",
 ) -> Path:
     def log(msg: str) -> None:
         if progress:
@@ -76,13 +93,7 @@ def download_video(
         raise RuntimeError("yt-dlp is required") from e
 
     output_template = str(dest / "%(title)s.%(ext)s")
-    format_tries = [
-        "best",
-        "bestvideo*+bestaudio/best",
-        "best[height<=2160]",
-        "best[height<=1080]",
-        "best[height<=720]",
-    ]
+    format_string = QUALITY_MAP.get(quality, QUALITY_MAP["best"])
 
     last_update = [0.0]
     last_filename = [""]
@@ -120,40 +131,33 @@ def download_video(
 
     last_err: Exception | None = None
     log(f"Downloading: {url}")
+    log(f"Quality: {quality}")
 
-    for fmt in format_tries:
-        ydl_opts: dict = {
-            "format": fmt,
-            "outtmpl": output_template,
-            "noplaylist": True,
-            "retries": 5,
-            "fragment_retries": 5,
-            "concurrent_fragment_downloads": 8,
-            "progress_hooks": [hook],
-            "quiet": True,
-            "no_warnings": True,
-            "noprogress": True,
+    ydl_opts: dict = {
+        "format": format_string,
+        "outtmpl": output_template,
+        "noplaylist": True,
+        "retries": 5,
+        "fragment_retries": 5,
+        "concurrent_fragment_downloads": 8,
+        "progress_hooks": [hook],
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+    }
+    if shutil.which("aria2c"):
+        ydl_opts["external_downloader"] = "aria2c"
+        ydl_opts["external_downloader_args"] = {
+            "aria2c": ["-x", "16", "-s", "16", "-k", "1M"]
         }
-        if shutil.which("aria2c"):
-            ydl_opts["external_downloader"] = "aria2c"
-            ydl_opts["external_downloader_args"] = {
-                "aria2c": ["-x", "16", "-s", "16", "-k", "1M"]
-            }
-        if cookies_file and cookies_file.exists():
-            ydl_opts["cookiefile"] = str(cookies_file)
+    if cookies_file and cookies_file.exists():
+        ydl_opts["cookiefile"] = str(cookies_file)
 
-        try:
-            log(f"  trying format={fmt}")
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            last_err = None
-            break
-        except Exception as e:
-            last_err = e
-            continue
-
-    if last_err is not None:
-        raise RuntimeError(f"Download failed after all format tries: {last_err}") from last_err
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    except Exception as e:
+        raise RuntimeError(f"Download failed: {e}") from e
 
     files = [
         p for p in dest.glob("*")
@@ -195,11 +199,13 @@ def resolve_subtitle_url(
     page_url: str,
     cookies_file: Path | None = None,
     progress: ProgressCallback | None = None,
+    subtitle_lang: str = "en",
 ) -> str | None:
     def log(msg: str) -> None:
         if progress:
             progress(msg)
 
+    lang_code = SUBTITLE_MAP.get(subtitle_lang, "eng")
     ch = _cookies_header(cookies_file)
     headers = {
         "User-Agent": (
@@ -218,20 +224,20 @@ def resolve_subtitle_url(
             html = r.text
             found: list[str] = []
             for pat in [
-                r'href=["\'](https?://[^"\']+?/eng\.ass)["\']',
+                rf'href=["\'](https?://[^"\']+?/{lang_code}\.ass)["\']',
                 r'href=["\'](https?://[^"\']+?\.ass)["\']',
             ]:
                 for m in re.finditer(pat, html, re.I):
                     if m.group(1) not in found:
                         found.append(m.group(1))
             for u in found:
-                if "eng.ass" in u.lower():
+                if f"{lang_code}.ass" in u.lower():
                     log(f"  page subtitle: {u}")
                     return u
             if found:
                 log(f"  page subtitle: {found[0]}")
                 return found[0]
-            log("  no .ass on page")
+            log(f"  no {lang_code}.ass on page")
         else:
             log(f"  page HTTP {r.status_code}")
     except Exception as e:
@@ -288,7 +294,7 @@ def resolve_subtitle_url(
         domain = domains[0]
         if not str(domain).startswith("http"):
             domain = "https://" + str(domain).lstrip("/")
-        sub = f"{str(domain).rstrip('/')}/{stream_url.strip('/')}/eng.ass"
+        sub = f"{str(domain).rstrip('/')}/{stream_url.strip('/')}/{lang_code}.ass"
         log(f"  player API subtitle: {sub}")
         return sub
     except Exception as e:
@@ -425,6 +431,51 @@ def scrape_series_info(
     return info
 
 
+def scrape_episode_list(
+    series_url: str,
+    cookies_file: Path | None = None,
+    progress: ProgressCallback | None = None,
+) -> list[dict[str, str]]:
+    def log(msg: str) -> None:
+        if progress:
+            progress(msg)
+
+    episodes: list[dict[str, str]] = []
+    ch = _cookies_header(cookies_file)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://hstream.moe/",
+    }
+    if ch:
+        headers["Cookie"] = ch
+
+    try:
+        r = requests.get(series_url, headers=headers, timeout=30)
+        if r.status_code != 200:
+            log(f"Series page HTTP {r.status_code}")
+            return episodes
+        page = r.text
+    except Exception as e:
+        log(f"Series page failed: {e}")
+        return episodes
+
+    pattern = re.compile(
+        r'href=["\'](/hentai/[^"\']+/(\d+))["\'][^>]*>.*?</a>',
+        re.I | re.S,
+    )
+    for m in pattern.finditer(page):
+        ep_url = m.group(1)
+        ep_num = m.group(2)
+        full_url = f"https://hstream.moe{ep_url}" if not ep_url.startswith("http") else ep_url
+        episodes.append({"url": full_url, "number": ep_num})
+
+    log(f"Found {len(episodes)} episodes")
+    return episodes
+
+
 def process_url(
     url: str,
     dest: Path,
@@ -432,6 +483,8 @@ def process_url(
     year: str = "2024",
     cookies_file: Path | None = None,
     progress: ProgressCallback | None = None,
+    quality: str = "best",
+    subtitle_lang: str = "en",
 ) -> Path:
     def log(msg: str) -> None:
         if progress:
@@ -441,7 +494,12 @@ def process_url(
     folder.mkdir(parents=True, exist_ok=True)
     log(f"Series folder: {folder.name}")
 
-    video_path = download_video(url, folder, cookies_file=cookies_file, progress=progress)
+    video_path = download_video(
+        url, folder,
+        cookies_file=cookies_file,
+        progress=progress,
+        quality=quality,
+    )
     base_name = video_path.stem
     final_mkv = folder / f"{base_name}.mkv"
 
@@ -460,13 +518,19 @@ def process_url(
     sub_path = folder / f"{base_name}.ass"
     sub_ok = False
 
-    log("Resolving subtitle (page + player API)...")
-    live_sub = resolve_subtitle_url(url, cookies_file=cookies_file, progress=progress)
+    log(f"Resolving subtitle ({subtitle_lang})...")
+    live_sub = resolve_subtitle_url(
+        url,
+        cookies_file=cookies_file,
+        progress=progress,
+        subtitle_lang=subtitle_lang,
+    )
     if live_sub and download_subtitle(live_sub, sub_path):
         sub_ok = True
         log("Subtitle found via page/player API.")
 
     if not sub_ok:
+        lang_code = SUBTITLE_MAP.get(subtitle_lang, "eng")
         candidates: list[str] = []
         if series_slug:
             candidates.append(series_slug)
@@ -504,7 +568,7 @@ def process_url(
         for host in sub_hosts:
             for y in years:
                 for slug in candidates:
-                    sub_url = f"{host}/{y}/{slug}/E{ep_num:02d}/eng.ass"
+                    sub_url = f"{host}/{y}/{slug}/E{ep_num:02d}/{lang_code}.ass"
                     if download_subtitle(sub_url, sub_path):
                         sub_ok = True
                         log(f"Subtitle found: {host} / {y} / {slug}")
@@ -525,3 +589,82 @@ def process_url(
 
     log("No subtitle found – keeping original video.")
     return video_path
+
+
+def save_download_history(
+    history_dir: Path,
+    user_id: int,
+    url: str,
+    filename: str,
+    size: int,
+    quality: str,
+) -> None:
+    history_file = history_dir / f"{user_id}.json"
+    history: list[dict] = []
+    if history_file.exists():
+        try:
+            history = json.loads(history_file.read_text())
+        except Exception:
+            history = []
+    history.append({
+        "url": url,
+        "filename": filename,
+        "size": size,
+        "quality": quality,
+        "timestamp": time.time(),
+    })
+    history_file.write_text(json.dumps(history, indent=2))
+
+
+def get_download_history(history_dir: Path, user_id: int, limit: int = 10) -> list[dict]:
+    history_file = history_dir / f"{user_id}.json"
+    if not history_file.exists():
+        return []
+    try:
+        history = json.loads(history_file.read_text())
+        return history[-limit:]
+    except Exception:
+        return []
+
+
+def get_user_stats(history_dir: Path, user_id: int) -> dict:
+    history_file = history_dir / f"{user_id}.json"
+    if not history_file.exists():
+        return {"total_downloads": 0, "total_size": 0, "formats": {}}
+    try:
+        history = json.loads(history_file.read_text())
+        total_size = sum(h.get("size", 0) for h in history)
+        formats: dict[str, int] = {}
+        for h in history:
+            q = h.get("quality", "unknown")
+            formats[q] = formats.get(q, 0) + 1
+        return {
+            "total_downloads": len(history),
+            "total_size": total_size,
+            "formats": formats,
+        }
+    except Exception:
+        return {"total_downloads": 0, "total_size": 0, "formats": {}}
+
+
+def cleanup_old_files(download_root: Path, max_age_days: int) -> int:
+    if max_age_days <= 0:
+        return 0
+    removed = 0
+    cutoff = time.time() - (max_age_days * 86400)
+    for f in download_root.rglob("*"):
+        if f.is_file() and f.stat().st_mtime < cutoff:
+            try:
+                f.unlink()
+                removed += 1
+            except Exception:
+                pass
+    for d in download_root.rglob("*"):
+        if d.is_dir():
+            try:
+                if not any(d.iterdir()):
+                    d.rmdir()
+                    removed += 1
+            except Exception:
+                pass
+    return removed
