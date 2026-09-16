@@ -109,12 +109,9 @@ def download_video(
             progress(
                 f"📥 <b>Download</b>\n"
                 f"<code>{short}</code>\n"
-                f"{bar} <b>{pct:.2f}%</b>\n"
-                f"Processed: {human_size(done)}\n"
-                f"Size: {human_size(total) if total else '—'}\n"
-                f"Speed: {human_size(speed)}/s\n"
-                f"ETA: {eta_s}\n"
-                f"Tool: yt-dlp"
+                f"{bar} <b>{pct:.1f}%</b>\n"
+                f"📥 {human_size(done)} / {human_size(total) if total else '—'}\n"
+                f"⚡ {human_size(speed)}/s • ETA {eta_s}"
             )
         elif status == "finished":
             name = d.get("filename") or last_filename[0] or "file"

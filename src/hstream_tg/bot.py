@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from pyrogram import Client, enums, filters
-from pyrogram.types import Document, Message
+from pyrogram.types import Document, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from hstream_tg.config import Settings
 from hstream_tg.downloader import (
@@ -38,7 +38,9 @@ from hstream_tg.utils import (
     episode_number_from_url,
     html_escape,
     human_size,
+    progress_bar,
     rename_episode_file,
+    sys_stats_line,
 )
 
 logger = logging.getLogger("hstream-tg")
@@ -70,35 +72,83 @@ def register_handlers(app: Client, settings: Settings) -> None:
 
     @app.on_message(filters.command("start"))
     async def start_cmd(client: Client, message: Message) -> None:
-        text = (
-            "👋 <b>HStream-TG</b> <i>(Kurigram / MTProto)</i>\n\n"
-            "Send me one or more <b>hstream.moe episode links</b> and I will:\n"
-            "• download the video (best quality)\n"
-            "• try English .ass subtitles + remux to MKV\n"
-            "• post <b>poster + series caption once</b> per hentai\n"
-            "• leech each episode (up to ~2 GB via MTProto)\n\n"
-            "<b>Commands</b>\n"
-            "/start – this message\n"
-            "/help – detailed help\n"
-            "/cookies – upload cookies.txt\n"
-            "/thumb – set custom leech thumbnail\n"
-            "/status – jobs & disk usage\n"
-            "/cancel – abort running job\n"
-            "/clear – delete your temporary files\n\n"
-            "⚠️ Only <b>single-episode</b> URLs\n"
-            "(e.g. <code>https://hstream.moe/hentai/title-1</code>)"
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("📖 Tutorial", callback_data="tutorial"),
+                    InlineKeyboardButton("⚙️ Settings", callback_data="settings"),
+                ],
+            ]
         )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML)
+        text = (
+            "👋 <b>HStream-TG</b>\n\n"
+            "Download episode hstream.moe langsung ke Telegram.\n"
+            "Quality terbaik, subtitle Inggris, remux MKV.\n\n"
+            "⚡ <b>Quick Start</b>\n"
+            "1. /cookies — upload Netscape cookies.txt\n"
+            "2. Kirim link episode\n"
+            "3. Bot download & upload otomatis\n\n"
+            "📚 <b>Commands</b>\n"
+            "/start — mulai\n"
+            "/help — bantuan\n"
+            "/cookies — set cookies\n"
+            "/thumb — set thumbnail\n"
+            "/status — cek status\n"
+            "/cancel — batalkan job\n"
+            "/clear — hapus file\n\n"
+            "⚠️ Kirim link <b>single episode</b> saja\n"
+            "contoh: <code>https://hstream.moe/hentai/title-1</code>"
+        )
+        await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+
+    @app.on_callback_query(filters.regex("^tutorial$"))
+    async def tutorial_cb(client: Client, callback: Message) -> None:
+        text = (
+            "📖 <b>Tutorial</b>\n\n"
+            "<b>1. Setup Cookies</b>\n"
+            "Ketik <code>/cookies</code> lalu kirim file cookies.txt\n"
+            "dari browser (format Netscape).\n\n"
+            "<b>2. Kirim Link</b>\n"
+            "Paste link episode hstream.moe.\n"
+            "Contoh: <code>https://hstream.moe/hentai/title-1</code>\n\n"
+            "<b>3. Tunggu</b>\n"
+            "Bot akan download, remux, lalu upload.\n"
+            "Proses biasanya 1-5 menit per episode.\n\n"
+            "<b>4. Selesai</b>\n"
+            "File akan muncul di chat ini.\n"
+            "Ketik <code>/status</code> untuk cek progress."
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML)
+
+    @app.on_callback_query(filters.regex("^settings$"))
+    async def settings_cb(client: Client, callback: Message) -> None:
+        uid = callback.from_user.id
+        cookies_ok = user_cookies_path(uid).exists()
+        thumb_ok = user_thumb_path(uid).exists()
+        text = (
+            "⚙️ <b>Settings</b>\n\n"
+            f"🍪 Cookies: {'✅ aktif' if cookies_ok else '❌ belum set'}\n"
+            f"🖼 Thumbnail: {'✅ custom' if thumb_ok else '❌ default'}\n"
+            f"📦 Max upload: <code>{settings.max_file_mb:.0f} MB</code>\n\n"
+            "Ubah dengan perintah:\n"
+            "/cookies — upload cookies baru\n"
+            "/thumb — set custom thumbnail"
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML)
 
     @app.on_message(filters.command("help"))
     async def help_cmd(client: Client, message: Message) -> None:
         text = (
-            "<b>How to use</b>\n\n"
-            "1. (Optional) <code>/cookies</code> then send Netscape cookies.txt\n"
-            "2. (Optional) <code>/thumb</code> then send a photo for custom leech thumb\n"
-            "3. Paste one or more episode URLs.\n"
-            "4. Large files upload via <b>Kurigram MTProto</b> "
-            f"(soft limit <code>{settings.max_file_mb:.0f} MB</code>).\n"
+            "❓ <b>Bantuan</b>\n\n"
+            "<b>Cara Pakai</b>\n"
+            "1. <code>/cookies</code> lalu kirim cookies.txt\n"
+            "2. (Optional) <code>/thumb</code> lalu kirim foto\n"
+            "3. Kirim link episode hstream.moe\n"
+            f"4. File di-upload via MTProto (max <code>{settings.max_file_mb:.0f} MB</code>)\n\n"
+            "<b>Troubleshooting</b>\n"
+            "• Download gagal? Coba /cookies dulu\n"
+            "• File terlalu besar? Bot akan beri tahu\n"
+            "• Ingin batal? Ketik /cancel"
         )
         await message.reply(text, parse_mode=enums.ParseMode.HTML)
 
@@ -108,25 +158,86 @@ def register_handlers(app: Client, settings: Settings) -> None:
         ud = user_dir(uid)
         total = sum(f.stat().st_size for f in ud.rglob("*") if f.is_file())
         files = list(ud.glob("*"))
+        cookies_ok = user_cookies_path(uid).exists()
+        thumb_ok = user_thumb_path(uid).exists()
+        jobs = len(active_jobs)
+
         text = (
-            f"👤 User <code>{uid}</code>\n"
+            f"📊 <b>Status</b> — User <code>{uid}</code>\n\n"
             f"📂 Files: <b>{len(files)}</b>\n"
             f"💾 Size: <b>{human_size(total)}</b>\n"
-            f"⚙️ Active jobs: <b>{len(active_jobs)}</b>\n"
-            f"🍪 Cookies: {'✅' if user_cookies_path(uid).exists() else '❌'}\n"
-            f"🖼 Thumb: {'✅' if user_thumb_path(uid).exists() else '❌'}\n"
-            f"📦 Max upload: <b>{settings.max_file_mb:.0f} MB</b>\n"
+            f"⚙️ Jobs: <b>{jobs} active</b>\n"
+            f"🍪 Cookies: {'✅ ada' if cookies_ok else '❌ belum'}\n"
+            f"🖼 Thumbnail: {'✅ set' if thumb_ok else '❌ default'}\n"
+            f"📦 Max upload: <code>{settings.max_file_mb:.0f} MB</code>"
         )
-        await message.reply(text, parse_mode=enums.ParseMode.HTML)
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("🔄 Refresh", callback_data="status_refresh"),
+                    InlineKeyboardButton("🧹 Clear", callback_data="status_clear"),
+                ],
+            ]
+        )
+        await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+
+    @app.on_callback_query(filters.regex("^status_refresh$"))
+    async def status_refresh_cb(client: Client, callback: Message) -> None:
+        uid = callback.from_user.id
+        ud = user_dir(uid)
+        total = sum(f.stat().st_size for f in ud.rglob("*") if f.is_file())
+        files = list(ud.glob("*"))
+        cookies_ok = user_cookies_path(uid).exists()
+        thumb_ok = user_thumb_path(uid).exists()
+        jobs = len(active_jobs)
+
+        text = (
+            f"📊 <b>Status</b> — User <code>{uid}</code>\n\n"
+            f"📂 Files: <b>{len(files)}</b>\n"
+            f"💾 Size: <b>{human_size(total)}</b>\n"
+            f"⚙️ Jobs: <b>{jobs} active</b>\n"
+            f"🍪 Cookies: {'✅ ada' if cookies_ok else '❌ belum'}\n"
+            f"🖼 Thumbnail: {'✅ set' if thumb_ok else '❌ default'}\n"
+            f"📦 Max upload: <code>{settings.max_file_mb:.0f} MB</code>"
+        )
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("🔄 Refresh", callback_data="status_refresh"),
+                    InlineKeyboardButton("🧹 Clear", callback_data="status_clear"),
+                ],
+            ]
+        )
+        await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+
+    @app.on_callback_query(filters.regex("^status_clear$"))
+    async def status_clear_cb(client: Client, callback: Message) -> None:
+        uid = callback.from_user.id
+        ud = user_dir(uid)
+        removed = 0
+        for f in ud.glob("*"):
+            try:
+                if f.is_file():
+                    f.unlink()
+                    removed += 1
+                elif f.is_dir():
+                    shutil.rmtree(f, ignore_errors=True)
+                    removed += 1
+            except Exception:
+                pass
+        await callback.message.edit_text(
+            f"🧹 Berhasil hapus {removed} item(s).",
+            parse_mode=enums.ParseMode.HTML,
+        )
 
     @app.on_message(filters.command("cancel"))
     async def cancel_cmd(client: Client, message: Message) -> None:
         uid = message.from_user.id
         if uid in active_jobs:
             active_jobs.discard(uid)
-            await message.reply("🛑 Job cancelled.")
+            await message.reply("🛑 Job dibatalkan.")
         else:
-            await message.reply("No active job to cancel.")
+            await message.reply("Tidak ada job yang berjalan.")
 
     @app.on_message(filters.command("clear"))
     async def clear_cmd(client: Client, message: Message) -> None:
@@ -143,15 +254,23 @@ def register_handlers(app: Client, settings: Settings) -> None:
                     removed += 1
             except Exception:
                 pass
-        await message.reply(f"🧹 Cleared {removed} item(s).")
+        await message.reply(f"🧹 Berhasil hapus {removed} item(s).")
 
     @app.on_message(filters.command("cookies"))
     async def cookies_cmd(client: Client, message: Message) -> None:
-        await message.reply(
-            "🍪 Send a <b>Netscape cookies.txt</b> as a document.",
-            parse_mode=enums.ParseMode.HTML,
+        uid = message.from_user.id
+        has_cookies = user_cookies_path(uid).exists()
+        status = "✅ Sudah ada" if has_cookies else "❌ Belum ada"
+        text = (
+            "🍪 <b>Setup Cookies</b>\n\n"
+            f"Status: {status}\n\n"
+            "Kirim file <code>cookies.txt</code> (Netscape format)\n"
+            "sebagai document/folder.\n\n"
+            "💡 Cookies dibutuhkan untuk download.\n"
+            "Tanpa cookies, beberapa video mungkin gagal."
         )
-        (settings.cookies_dir / f".await_{message.from_user.id}").touch()
+        await message.reply(text, parse_mode=enums.ParseMode.HTML)
+        (settings.cookies_dir / f".await_{uid}").touch()
 
     @app.on_message(filters.command("thumb"))
     async def thumb_cmd(client: Client, message: Message) -> None:
@@ -162,18 +281,20 @@ def register_handlers(app: Client, settings: Settings) -> None:
             out = create_user_thumb(Path(dl), uid)
             Path(dl).unlink(missing_ok=True)
             if out:
-                await message.reply("✅ Custom thumbnail saved (used for all uploads).")
+                await message.reply("✅ Thumbnail tersimpan!")
             else:
-                await message.reply("❌ Failed to save thumbnail (need ffmpeg).")
+                await message.reply("❌ Gagal simpan thumbnail (butuh ffmpeg).")
             return
         (settings.cookies_dir / f".await_thumb_{uid}").touch()
-        extra = "\nCurrent: ✅ set" if path.exists() else "\nCurrent: ❌ none"
-        await message.reply(
-            "🖼 Send a <b>photo</b> now to set your leech thumbnail."
-            f"{extra}\n"
-            "Same idea as Aeon <code>/settings → thumbnail</code>.",
-            parse_mode=enums.ParseMode.HTML,
+        status = "✅ Sudah ada" if path.exists() else "❌ Belum ada"
+        text = (
+            "🖼 <b>Setup Thumbnail</b>\n\n"
+            f"Status: {status}\n\n"
+            "Kirim foto untuk dijadikan thumbnail upload.\n"
+            "Thumbnail digunakan untuk semua upload.\n\n"
+            "💡 Reply foto dengan /thumb juga bisa."
         )
+        await message.reply(text, parse_mode=enums.ParseMode.HTML)
 
     @app.on_message(filters.photo)
     async def handle_photo(client: Client, message: Message) -> None:
@@ -186,9 +307,9 @@ def register_handlers(app: Client, settings: Settings) -> None:
         Path(dl).unlink(missing_ok=True)
         flag.unlink(missing_ok=True)
         if out:
-            await message.reply("✅ Custom thumbnail saved.")
+            await message.reply("✅ Thumbnail tersimpan!")
         else:
-            await message.reply("❌ Failed to save thumbnail.")
+            await message.reply("❌ Gagal simpan thumbnail.")
 
     @app.on_message(filters.document)
     async def handle_document(client: Client, message: Message) -> None:
@@ -199,12 +320,20 @@ def register_handlers(app: Client, settings: Settings) -> None:
         doc: Document = message.document
         name = (doc.file_name or "").lower()
         if not name.endswith((".txt", ".cookies")):
-            await message.reply("Please send a .txt cookies file.")
+            await message.reply(
+                "❌ File tidak valid.\n"
+                "Kirim file <code>cookies.txt</code> (Netscape format).",
+                parse_mode=enums.ParseMode.HTML,
+            )
             return
         dest = user_cookies_path(uid)
         await message.download(file_name=str(dest))
         flag.unlink(missing_ok=True)
-        await message.reply(f"✅ Cookies saved ({human_size(dest.stat().st_size)}).")
+        await message.reply(
+            f"✅ Cookies tersimpan!\n"
+            f"📏 Size: <code>{human_size(dest.stat().st_size)}</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
 
     @app.on_message(
         filters.text
@@ -214,23 +343,40 @@ def register_handlers(app: Client, settings: Settings) -> None:
         text = (message.text or "").strip()
         urls = URL_RE.findall(text)
         if not urls:
-            await message.reply(
-                "No valid hstream.moe episode URLs found.\n"
-                "<code>https://hstream.moe/hentai/title-1</code>",
-                parse_mode=enums.ParseMode.HTML,
+            text = (
+                "🔍 Link tidak ditemukan.\n\n"
+                "Format yang benar:\n"
+                "<code>https://hstream.moe/hentai/title-1</code>\n\n"
+                "💡 Kirim satu link per line untuk multiple episodes."
             )
+            await message.reply(text, parse_mode=enums.ParseMode.HTML)
             return
         seen: set[str] = set()
         urls = [u for u in urls if not (u in seen or seen.add(u))]
         uid = message.from_user.id
         if uid in active_jobs:
-            await message.reply("⏳ You already have a job running.")
+            kb = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🛑 Batalkan", callback_data="cancel_job")]]
+            )
+            await message.reply(
+                "⏳ Kamu sudah punya job yang berjalan.\nTunggu selesai atau batalkan.",
+                reply_markup=kb,
+            )
             return
         active_jobs.add(uid)
         try:
             await _process_urls(client, message, urls, settings, executor, active_jobs, user_dir, user_cookies_path)
         finally:
             active_jobs.discard(uid)
+
+    @app.on_callback_query(filters.regex("^cancel_job$"))
+    async def cancel_job_cb(client: Client, callback: Message) -> None:
+        uid = callback.from_user.id
+        if uid in active_jobs:
+            active_jobs.discard(uid)
+            await callback.message.edit_text("🛑 Job dibatalkan.")
+        else:
+            await callback.message.edit_text("Tidak ada job yang berjalan.")
 
 
 async def _process_urls(
@@ -262,9 +408,10 @@ async def _process_urls(
     total_eps = len(urls)
     total_series = len(order)
     status = await message.reply(
-        f"🚀 Starting <b>{total_eps}</b> episode(s) across <b>{total_series}</b> series…\n"
-        f"Cookies: {'✅' if cookies_file else '❌'}\n"
-        f"Upload: <b>Kurigram</b> (up to {settings.max_file_mb:.0f} MB)",
+        f"🚀 <b>Memulai Download</b>\n\n"
+        f"📺 <b>{total_eps}</b> episode dari <b>{total_series}</b> series\n"
+        f"🍪 Cookies: {'✅' if cookies_file else '❌'}\n"
+        f"📤 Upload via: <b>Kurigram MTProto</b>",
         parse_mode=enums.ParseMode.HTML,
     )
 
@@ -298,8 +445,9 @@ async def _process_urls(
 
         await progress_edit(
             status,
-            f"📚 Series <b>[{s_idx}/{total_series}]</b> {html_escape(title_label)}\n"
-            f"Episodes: <b>{len(series_urls)}</b>",
+            f"📚 <b>Series [{s_idx}/{total_series}]</b>\n"
+            f"{html_escape(title_label)}\n"
+            f"Episode: <b>{len(series_urls)}</b>",
         )
 
         for chat_id in dest_chats:
@@ -321,7 +469,7 @@ async def _process_urls(
             idx = ep_global
 
             if uid not in active_jobs:
-                await progress_edit(status, "🛑 Job cancelled.")
+                await progress_edit(status, "🛑 Job dibatalkan.")
                 return
 
             progress_cb = make_progress_cb(status, idx, total_eps, url, settings, loop)
@@ -335,9 +483,16 @@ async def _process_urls(
                 )
             except Exception as e:
                 logger.exception("Failed %s", url)
-                await progress_edit(
-                    status, f"❌ <b>[{idx}/{total_eps}]</b> failed\n<code>{url}</code>\n{e}"
+                text = (
+                    f"❌ <b>[{idx}/{total_eps}]</b> Gagal download\n\n"
+                    f"<code>{url}</code>\n\n"
+                    f"Error: <code>{html_escape(str(e))}</code>\n\n"
+                    "💡 Coba /cookies dulu, atau kirim link lain."
                 )
+                kb = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔄 Coba Lagi", callback_data="retry_download")]]
+                )
+                await progress_edit(status, text)
                 continue
 
             ep_num = episode_number_from_url(url)
@@ -348,16 +503,18 @@ async def _process_urls(
 
             await progress_edit(
                 status,
-                f"✅ <b>[{idx}/{total_eps}]</b> ready – uploading…\n"
+                f"✅ <b>[{idx}/{total_eps}]</b> Siap upload\n\n"
                 f"<code>{final_path.name}</code>\n"
-                f"Size: {human_size(final_path.stat().st_size)}",
+                f"📏 {human_size(final_path.stat().st_size)}",
             )
 
             if size_mb > settings.max_file_mb:
-                await message.reply(
-                    f"📦 File too large ({size_mb:.1f} MB > {settings.max_file_mb:.0f} MB).\n{ep_caption}",
-                    parse_mode=enums.ParseMode.HTML,
+                text = (
+                    f"📦 <b>File terlalu besar</b>\n\n"
+                    f"📏 {size_mb:.1f} MB > {settings.max_file_mb:.0f} MB\n"
+                    f"<code>{final_path.name}</code>"
                 )
+                await message.reply(text, parse_mode=enums.ParseMode.HTML)
                 continue
 
             thumb_path = await loop.run_in_executor(
@@ -382,9 +539,11 @@ async def _process_urls(
                     uploaded_ok = True
                 except Exception as e:
                     logger.exception("Upload failed to %s", chat_id)
-                    await message.reply(
-                        f"⚠️ Upload failed: {e}", parse_mode=enums.ParseMode.HTML
+                    text = (
+                        f"⚠️ <b>Upload gagal</b>\n\n"
+                        f"Error: <code>{html_escape(str(e))}</code>"
                     )
+                    await message.reply(text, parse_mode=enums.ParseMode.HTML)
 
             if not settings.keep_files and uploaded_ok:
                 try:
@@ -394,6 +553,7 @@ async def _process_urls(
 
     await progress_edit(
         status,
-        f"🎉 Done! <b>{total_eps}</b> episode(s) / <b>{total_series}</b> series.\n"
-        "/status or /clear when finished.",
+        f"🎉 <b>Selesai!</b>\n\n"
+        f"📺 {total_eps} episode dari {total_series} series\n"
+        "Ketik /status atau /clear untuk kelola file.",
     )

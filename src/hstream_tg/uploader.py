@@ -80,7 +80,7 @@ def media_destinations(settings: Settings, fallback_chat_id: int | str) -> list[
 
 def build_series_caption(info: SeriesInfo, has_subs: bool = True) -> str:
     title = info.title or "Unknown"
-    lines = [f"<blockquote><b>📖 {html_escape(title)}</b></blockquote>"]
+    lines = [f"<b>📖 {html_escape(title)}</b>"]
     if info.title_jp:
         lines.append(f"<i>{html_escape(info.title_jp)}</i>")
     lines.append("")
@@ -90,7 +90,7 @@ def build_series_caption(info: SeriesInfo, has_subs: bool = True) -> str:
     if info.status:
         meta.append(f"📊 Status: <b>{html_escape(info.status)}</b>")
     if info.episodes:
-        meta.append(f"📑 Total Episodes: <code>{info.episodes}</code>")
+        meta.append(f"📑 Episodes: <code>{info.episodes}</code>")
     if info.tags:
         tags = ", ".join(info.tags[:8])
         meta.append(f"🏷️ Tags: {html_escape(tags)}")
@@ -100,7 +100,7 @@ def build_series_caption(info: SeriesInfo, has_subs: bool = True) -> str:
         "🗣 Language: Japanese + Eng subs" if has_subs else "🗣 Language: Japanese"
     )
     if meta:
-        lines += ["", "<blockquote>" + "\n".join(meta) + "</blockquote>"]
+        lines += ["", "\n".join(meta)]
     text = "\n".join(lines)
     return text[:1020] + "…" if len(text) > 1024 else text
 
@@ -119,9 +119,8 @@ def make_progress_cb(
 ) -> object:
     def _cb(msg: str) -> None:
         text = (
-            f"<b>[{idx}/{total}]</b>  <code>{html_escape(url.split('/')[-1])}</code>\n"
-            f"{msg}\n"
-            f"<i>{sys_stats_line(settings.download_root)}</i>"
+            f"📥 <b>[{idx}/{total}]</b> <code>{html_escape(url.split('/')[-1])}</code>\n"
+            f"{msg}"
         )
         asyncio.run_coroutine_threadsafe(progress_edit(status, text), loop)
 
@@ -148,8 +147,7 @@ def make_upload_progress(
             f"📤 <b>[{idx}/{total}] Upload</b>\n"
             f"<code>{html_escape(name)}</code>\n"
             f"{bar} <b>{pct:.1f}%</b>\n"
-            f"Sent: {human_size(current)}\n"
-            f"Size: {human_size(total_bytes) if total_bytes else '—'}\n"
+            f"📤 {human_size(current)} / {human_size(total_bytes) if total_bytes else '—'}\n"
             f"<i>{sys_stats_line(settings.download_root)}</i>"
         )
         await progress_edit(status, text)
