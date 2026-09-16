@@ -7,7 +7,6 @@ import html as html_lib
 import re
 import shutil
 import subprocess
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -47,15 +46,13 @@ def ensure_dependencies(progress: ProgressCallback | None = None) -> None:
     log("Checking / installing Python dependencies...")
     try:
         subprocess.run(
-            [
-                sys.executable, "-m", "pip", "install", "--upgrade",
-                "yt-dlp", "requests", "hanime-plugin",
-            ],
+            ["uv", "pip", "install", "--upgrade",
+             "yt-dlp", "requests", "hanime-plugin"],
             check=True,
             capture_output=True,
         )
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"pip install failed: {e}") from e
+        raise RuntimeError(f"uv pip install failed: {e}") from e
 
     for pkg in ("aria2c", "ffmpeg"):
         if shutil.which(pkg) is None:
