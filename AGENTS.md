@@ -45,7 +45,7 @@ src/hstream_tg/
 ├── downloader.py    # yt-dlp download + subtitle resolve + remux
 ├── thumb.py         # thumbnail resolution (user custom / video frame)
 ├── uploader.py      # upload helpers, progress, captions
-├── updater.py       # Heroku auto-updater (Aeon-style)
+├── updater.py       # auto-updater from upstream repo
 ├── utils.py         # shared helpers (human_size, html_escape, etc.)
 └── py.typed         # PEP 561 marker
 ```
@@ -64,16 +64,14 @@ Key defaults: `MAX_FILE_MB=2000`, `WORKERS=2`, `KEEP_FILES=false`.
 - **`ensure_dependencies()` runs pip install at runtime** — upgrades yt-dlp/requests/hanime-plugin.
 - **Subtitle resolution is best-effort.** CDN hosts rotate; resolution may silently fail.
 - **Session files preserved across resets:** `.env`, `*.session`, `*.session-journal` survive auto-update.
-- **`updater.py` does `git fetch + reset --hard`** on every Heroku dyno start.
+- **`updater.py` does `git fetch + reset --hard`** on every restart.
 - **Per-user file isolation:** `downloads/{user_id}/` directories. Deleted after upload unless `KEEP_FILES=true`.
 
 ## Deploy
 
-Primary: **Heroku container stack** (worker dyno). Manual trigger via `.github/workflows/heroku-deploy.yml`.
+Supports: Docker standalone, Google Colab.
 
-Also supports: Docker standalone, Google Colab.
-
-Heroku auto-update: pulls `UPSTREAM_REPO` on every restart via `start.sh` → `updater.py`.
+Auto-update: pulls `UPSTREAM_REPO` on every restart via `start.sh` → `updater.py`.
 
 ## Dev commands
 

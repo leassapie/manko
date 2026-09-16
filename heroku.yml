@@ -1,9 +1,0 @@
-# Deploy with Container Registry or GitHub Actions.
-# Set UPDATE_ON_START=true so each dyno start pulls latest code from UPSTREAM_REPO.
-build:
-  docker:
-    worker: Dockerfile
-run:
-  worker:
-    command:
-      - ./start.sh

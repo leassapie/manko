@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # ── Notification ───────────────────────────────────
     notify_dm: bool = True
 
-    # ── Heroku auto-update ──────────────────────────────
+    # ── Auto-update ─────────────────────────────────────
     upstream_repo: str = "https://github.com/leassapie/manko.git"
     upstream_branch: str = "main"
 

@@ -14,7 +14,7 @@ logger = logging.getLogger("mangko")
 
 
 def main() -> None:
-    # Aeon-style: pull upstream even when process is `python -m hstream_tg`
+    # Auto-update from upstream before starting
     try:
         from hstream_tg.updater import main as upstream_update
 

@@ -1,6 +1,6 @@
-"""Aeon-style upstream sync for Mangko.
+"""Auto-update from upstream repo.
 
-On Heroku restart (via start.sh) this pulls the latest code from UPSTREAM_REPO.
+On restart (via start.sh) this pulls the latest code from UPSTREAM_REPO.
 """
 
 import logging
