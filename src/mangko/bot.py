@@ -90,6 +90,9 @@ def main_menu_kb() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("📊 Status", callback_data="menu_status"),
                 InlineKeyboardButton("📜 History", callback_data="menu_history"),
             ],
+            [
+                InlineKeyboardButton("💾 Storage", url="https://t.me/fucystorage"),
+            ],
         ]
     )
 
@@ -140,18 +143,20 @@ def register_handlers(app: Client, settings: Settings) -> None:
         quality = get_quality(uid)
         subtitle = get_subtitle(uid)
 
-        status_parts: list[str] = []
-        status_parts.append(f"{'✅' if cookies_ok else '❌'} Cookies")
-        status_parts.append(f"🎬 {quality}")
-        status_parts.append(f"💬 {subtitle}")
-        status_line = " • ".join(status_parts)
         text = (
-            "👋 <b>Mangko</b>\n\n"
-            "Download episode hstream.moe langsung ke Telegram.\n"
-            "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
-            f"📊 {status_line}\n\n"
-            "💡 Kirim link episode untuk langsung download,\n"
-            "atau gunakan tombol di bawah."
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>⚡ M A N G K O</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "  <i>Download hstream.moe ke Telegram</i>\n"
+            "  <i>Quality terbaik · Subtitle · Remux MKV</i>\n\n"
+            "────────────────────\n"
+            f"  {'🟢' if cookies_ok else '🔴'} Cookies\n"
+            f"  🎬 Quality  →  <code>{quality}</code>\n"
+            f"  💬 Subtitle  →  <code>{subtitle}</code>\n"
+            "────────────────────\n\n"
+            "  💡 Kirim link episode untuk download,\n"
+            "  atau gunakan tombol di bawah.\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=main_menu_kb())
 
@@ -163,18 +168,20 @@ def register_handlers(app: Client, settings: Settings) -> None:
         quality = get_quality(uid)
         subtitle = get_subtitle(uid)
 
-        status_parts: list[str] = []
-        status_parts.append(f"{'✅' if cookies_ok else '❌'} Cookies")
-        status_parts.append(f"🎬 {quality}")
-        status_parts.append(f"💬 {subtitle}")
-        status_line = " • ".join(status_parts)
         text = (
-            "👋 <b>Mangko</b>\n\n"
-            "Download episode hstream.moe langsung ke Telegram.\n"
-            "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
-            f"📊 {status_line}\n\n"
-            "💡 Kirim link episode untuk langsung download,\n"
-            "atau gunakan tombol di bawah."
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>⚡ M A N G K O</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "  <i>Download hstream.moe ke Telegram</i>\n"
+            "  <i>Quality terbaik · Subtitle · Remux MKV</i>\n\n"
+            "────────────────────\n"
+            f"  {'🟢' if cookies_ok else '🔴'} Cookies\n"
+            f"  🎬 Quality  →  <code>{quality}</code>\n"
+            f"  💬 Subtitle  →  <code>{subtitle}</code>\n"
+            "────────────────────\n\n"
+            "  💡 Kirim link episode untuk download,\n"
+            "  atau gunakan tombol di bawah.\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=main_menu_kb())
 
@@ -182,12 +189,14 @@ def register_handlers(app: Client, settings: Settings) -> None:
     @app.on_callback_query(filters.regex("^menu_download$"))
     async def download_menu_cb(client: Client, callback: CallbackQuery) -> None:
         text = (
-            "📥 <b>Download</b>\n\n"
-            "Kirim link episode hstream.moe.\n"
-            "Contoh:\n"
-            "<code>https://hstream.moe/hentai/title-1</code>\n\n"
-            "💡 Bisa kirim beberapa link sekaligus\n"
-            "(satu link per baris)."
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>📥 D O W N L O A D</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "  Kirim link episode hstream.moe\n\n"
+            "  <code>https://hstream.moe/hentai/title-1</code>\n\n"
+            "  💡 Bisa kirim beberapa link sekaligus\n"
+            "  (satu link per baris)\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb())
 
@@ -196,9 +205,12 @@ def register_handlers(app: Client, settings: Settings) -> None:
     async def search_menu_cb(client: Client, callback: CallbackQuery) -> None:
         set_state(callback.from_user.id, "await_search")
         text = (
-            "🔍 <b>Search Anime</b>\n\n"
-            "Kirim judul anime yang ingin dicari.\n"
-            "Contoh: <code>Yuki</code>"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>🔍 S E A R C H</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "  Kirim judul anime untuk dicari\n\n"
+            "  Contoh: <code>Yuki</code>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb())
 
@@ -207,11 +219,14 @@ def register_handlers(app: Client, settings: Settings) -> None:
     async def batch_menu_cb(client: Client, callback: CallbackQuery) -> None:
         set_state(callback.from_user.id, "await_batch")
         text = (
-            "📦 <b>Batch Download</b>\n\n"
-            "Kirim link series untuk download semua episode.\n"
-            "Contoh:\n"
-            "<code>https://hstream.moe/hentai/title</code>\n\n"
-            "⚠️ Tanpa angka episode di akhir URL."
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>📦 B A T C H</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "  Kirim link series untuk download\n"
+            "  semua episode sekaligus\n\n"
+            "  <code>https://hstream.moe/hentai/title</code>\n\n"
+            "  ⚠️ Tanpa angka episode di akhir URL\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=back_kb())
 
@@ -225,11 +240,14 @@ def register_handlers(app: Client, settings: Settings) -> None:
         subtitle = get_subtitle(uid)
 
         text = (
-            "⚙️ <b>Settings</b>\n\n"
-            f"🍪 Cookies: {'✅ aktif' if cookies_ok else '❌ belum set'}\n"
-            f"🖼 Thumbnail: {'✅ custom' if thumb_ok else '❌ default'}\n"
-            f"🎬 Quality: <code>{quality}</code>\n"
-            f"💬 Subtitle: <code>{subtitle}</code>"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>⚙️ S E T T I N G S</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"  {'🟢' if cookies_ok else '🔴'} Cookies\n"
+            f"  {'🟢' if thumb_ok else '🔴'} Thumbnail\n"
+            f"  🎬 Quality  →  <code>{quality}</code>\n"
+            f"  💬 Subtitle  →  <code>{subtitle}</code>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         kb = InlineKeyboardMarkup(
             [
@@ -370,14 +388,17 @@ def register_handlers(app: Client, settings: Settings) -> None:
         subtitle = get_subtitle(uid)
 
         text = (
-            f"📊 <b>Status</b>\n\n"
-            f"📂 Files: <b>{len(files)}</b>\n"
-            f"💾 Size: <b>{human_size(total)}</b>\n"
-            f"⚙️ Jobs: <b>{jobs} active</b>\n"
-            f"🍪 Cookies: {'✅' if cookies_ok else '❌'}\n"
-            f"🖼 Thumbnail: {'✅' if thumb_ok else '❌'}\n"
-            f"🎬 Quality: <code>{quality}</code>\n"
-            f"💬 Subtitle: <code>{subtitle}</code>"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>📊 S T A T U S</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"  📂 Files    →  <b>{len(files)}</b>\n"
+            f"  💾 Size     →  <b>{human_size(total)}</b>\n"
+            f"  ⚙️ Jobs     →  <b>{jobs} active</b>\n"
+            f"  🍪 Cookies  →  {'🟢' if cookies_ok else '🔴'}\n"
+            f"  🖼 Thumb    →  {'🟢' if thumb_ok else '🔴'}\n"
+            f"  🎬 Quality  →  <code>{quality}</code>\n"
+            f"  💬 Subtitle →  <code>{subtitle}</code>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         kb = InlineKeyboardMarkup(
             [
@@ -420,16 +441,31 @@ def register_handlers(app: Client, settings: Settings) -> None:
         uid = callback.from_user.id
         history = get_history(uid, limit=5)
         if not history:
-            text = "📜 <b>History</b>\n\nBelum ada download."
+            text = (
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "  <b>📜 H I S T O R Y</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "  Belum ada download\n\n"
+                "━━━━━━━━━━━━━━━━━━━━"
+            )
             kb = back_kb()
         else:
-            text = "📜 <b>History</b> (5 terakhir)\n\n"
+            lines = [
+                "━━━━━━━━━━━━━━━━━━━━",
+                "  <b>📜 H I S T O R Y</b>",
+                "━━━━━━━━━━━━━━━━━━━━",
+                "",
+            ]
             kb_buttons: list[list[InlineKeyboardButton]] = []
             for i, h in enumerate(history, 1):
                 filename = h.get("filename", "unknown")
                 size = human_size(h.get("size", 0))
                 quality = h.get("quality", "?")
-                text += f"{i}. <code>{filename}</code>\n   📏 {size} • 🎬 {quality}\n"
+                lines.append(f"  {i}. <code>{filename}</code>")
+                lines.append(f"     📏 {size} · 🎬 {quality}")
+            lines.append("")
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            text = "\n".join(lines)
             kb_buttons.append([InlineKeyboardButton("◀️ Kembali", callback_data="menu")])
             kb = InlineKeyboardMarkup(kb_buttons)
         await callback.message.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
@@ -438,21 +474,23 @@ def register_handlers(app: Client, settings: Settings) -> None:
     @app.on_message(filters.command("help"))
     async def help_cmd(client: Client, message: Message) -> None:
         text = (
-            "❓ <b>Bantuan</b>\n\n"
-            "<b>Cara Pakai</b>\n"
-            "1. /cookies lalu kirim cookies.txt\n"
-            "2. (Optional) /thumb lalu kirim foto\n"
-            "3. (Optional) /quality pilih resolusi\n"
-            "4. (Optional) /subtitle pilih bahasa\n"
-            "5. Kirim link episode hstream.moe\n\n"
-            "<b>Commands</b>\n"
-            "/quality — pilih resolusi\n"
-            "/subtitle — pilih bahasa\n"
-            "/search — cari anime\n"
-            "/batch — download semua episode\n"
-            "/history — riwayat download\n"
-            "/stats — statistik\n\n"
-            "💡 Atau gunakan tombol di menu utama."
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>❓ H E L P</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "  <b>Cara Pakai</b>\n"
+            "  1. /cookies → kirim cookies.txt\n"
+            "  2. /thumb → kirim foto (opsional)\n"
+            "  3. /quality → pilih resolusi\n"
+            "  4. /subtitle → pilih bahasa\n"
+            "  5. Kirim link episode hstream.moe\n\n"
+            "  <b>Commands</b>\n"
+            "  /quality — pilih resolusi\n"
+            "  /subtitle — pilih bahasa\n"
+            "  /search — cari anime\n"
+            "  /batch — download semua episode\n"
+            "  /history — riwayat download\n"
+            "  /stats — statistik\n\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         kb = back_kb()
         await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
@@ -463,14 +501,17 @@ def register_handlers(app: Client, settings: Settings) -> None:
         uid = message.from_user.id
         stats = get_stats(uid)
         text = (
-            f"📊 <b>Stats</b>\n\n"
-            f"📥 Total download: <b>{stats['total_downloads']}</b>\n"
-            f"💾 Total size: <b>{human_size(stats['total_size'])}</b>"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "  <b>📈 S T A T S</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"  📥 Total download  →  <b>{stats['total_downloads']}</b>\n"
+            f"  💾 Total size      →  <b>{human_size(stats['total_size'])}</b>\n"
         )
         if stats["formats"]:
-            text += "\n\n📊 <b>Quality Distribution</b>\n"
+            text += "\n  <b>Quality Distribution</b>\n"
             for q, count in stats["formats"].items():
-                text += f"• {q}: <b>{count}</b>\n"
+                text += f"  • {q}  →  <b>{count}</b>\n"
+        text += "\n━━━━━━━━━━━━━━━━━━━━"
         kb = back_kb()
         await message.reply(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
 
