@@ -20,12 +20,12 @@ from mangko.utils import human_size, progress_bar
 type ProgressCallback = Callable[[str], None]
 
 QUALITY_MAP = {
-    "best": "best",
-    "2160p": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
-    "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-    "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]",
-    "480p": "bestvideo[height<=480]+bestaudio/best[height<=480]",
-    "360p": "bestvideo[height<=360]+bestaudio/best[height<=360]",
+    "best": "bestvideo+bestaudio/best",
+    "2160p": "bestvideo[height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best",
+    "1080p": "bestvideo[height<=1080]+bestaudio/bestvideo[height<=1080]+bestaudio/best",
+    "720p": "bestvideo[height<=720]+bestaudio/bestvideo[height<=720]+bestaudio/best",
+    "480p": "bestvideo[height<=480]+bestaudio/bestvideo[height<=480]+bestaudio/best",
+    "360p": "bestvideo[height<=360]+bestaudio/bestvideo[height<=360]+bestaudio/best",
 }
 
 SUBTITLE_MAP = {
@@ -70,7 +70,7 @@ def ensure_dependencies(progress: ProgressCallback | None = None) -> None:
     try:
         subprocess.run(
             ["uv", "pip", "install", "--upgrade",
-             "yt-dlp", "requests", "hanime-plugin"],
+             "yt-dlp", "httpx", "hanime-plugin"],
             check=True,
             capture_output=True,
         )
@@ -163,7 +163,16 @@ def download_video(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
-        raise RuntimeError(f"Download failed: {e}") from e
+        if "Requested format is not available" in str(e) and format_string != "best":
+            log(f"Format '{format_string}' unavailable, retrying with best...")
+            ydl_opts["format"] = "best"
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            except Exception as e2:
+                raise RuntimeError(f"Download failed: {e2}") from e2
+        else:
+            raise RuntimeError(f"Download failed: {e}") from e
 
     files = [
         p for p in dest.glob("*")
