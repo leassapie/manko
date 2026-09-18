@@ -62,6 +62,7 @@ URL_RE = re.compile(r"https?://(?:www\.)?hstream\.moe/hentai/[\w\-]+/?", re.I)
 # Global search engine and result cache
 _search_engine = SitemapSearch()
 _search_results: dict[int, list] = {}  # uid → list of SearchResult
+_search_episodes: dict[tuple[int, int], list] = {}  # (uid, idx) → episodes list
 
 
 def create_app(settings: Settings) -> Client:
@@ -649,6 +650,21 @@ def register_handlers(app: Client, settings: Settings) -> None:
         )
         await callback.message.edit_text("🛑 Job dibatalkan.", reply_markup=kb)
 
+    # ── Retry Download (stub — re-queues last failed URL) ──
+    @app.on_callback_query(filters.regex("^retry_download$"))
+    async def retry_download_cb(client: Client, callback: CallbackQuery) -> None:
+        await callback.answer("Retry not available yet — send the URL again.", show_alert=True)
+
+    # ── Skip Download (stub) ────────────────────────────
+    @app.on_callback_query(filters.regex("^skip_download$"))
+    async def skip_download_cb(client: Client, callback: CallbackQuery) -> None:
+        await callback.answer("Skipped.", show_alert=False)
+
+    # ── Confirm Batch from _handle_batch (dead code kept for safety) ──
+    @app.on_callback_query(filters.regex("^confirm_batch$"))
+    async def confirm_batch_cb(client: Client, callback: CallbackQuery) -> None:
+        await callback.answer("Use search batch instead.", show_alert=True)
+
     # ── Search Result Download Callback ────────────────
     @app.on_callback_query(filters.regex(r"^search_dl_(\d+)$"))
     async def search_download_cb(client: Client, callback: CallbackQuery) -> None:
@@ -680,9 +696,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
             return
 
         # Store episodes for this result
-        if not hasattr(_handle_search, "_episodes"):
-            _handle_search._episodes = {}
-        _handle_search._episodes[(uid, idx)] = episodes
+        _search_episodes[(uid, idx)] = episodes
 
         tags_str = ", ".join(r.tags[:5]) if r.tags else "—"
         text = (
@@ -732,8 +746,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
         idx = int(parts[1])
         ep_num = parts[2]
 
-        episodes_map = getattr(_handle_search, "_episodes", {})
-        episodes = episodes_map.get((uid, idx), [])
+        episodes = _search_episodes.get((uid, idx), [])
         ep_url = None
         for ep in episodes:
             if ep["number"] == ep_num:
@@ -910,11 +923,14 @@ async def _handle_search(
         reply_markup=back_kb(),
     )
 
-    # Fetch full info for each result in parallel
+    # Fetch full info for each result (limited concurrency)
+    sem = asyncio.Semaphore(3)
+
     async def _fetch_info(r: object) -> object:
-        return await loop.run_in_executor(
-            executor, lambda: _search_engine.get_series_info(r.url)
-        )
+        async with sem:
+            return await loop.run_in_executor(
+                executor, lambda _r=r: _search_engine.get_series_info(_r.url)
+            )
 
     detailed = await asyncio.gather(*[_fetch_info(r) for r in basic_results])
     _search_results[uid] = list(detailed)
@@ -1265,16 +1281,20 @@ async def _process_urls(
         if removed > 0:
             logger.info("Auto-deleted %d old files", removed)
 
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("📊 Status", callback_data="menu_status"),
-                InlineKeyboardButton("🏠 Menu", callback_data="menu"),
-            ],
-        ]
-    )
     await progress_edit(
         status,
         f"🎉 <b>Selesai!</b>\n\n"
         f"📺 {total_eps} episode dari {total_series} series",
+    )
+    await status.reply(
+        "🎉 <b>Download selesai!</b>",
+        parse_mode=enums.ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("📊 Status", callback_data="menu_status"),
+                    InlineKeyboardButton("🏠 Menu", callback_data="menu"),
+                ],
+            ]
+        ),
     )
