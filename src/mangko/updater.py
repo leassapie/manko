@@ -28,7 +28,7 @@ def main() -> int:
     settings = get_settings()
 
     if not settings.upstream_repo:
-        log.info("UPSTREAM_REPO empty – skip update")
+        log.info("UPSTREAM_REPO empty - skip update")
         return 0
 
     log.info("Updating from %s (%s)", settings.upstream_repo, settings.upstream_branch)

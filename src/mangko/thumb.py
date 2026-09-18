@@ -43,7 +43,7 @@ def user_thumb_path(user_id: int) -> Path:
 def create_user_thumb(photo_path: Path, user_id: int) -> Path | None:
     ff = _ffmpeg()
     if not ff:
-        logger.warning("ffmpeg not found – cannot save user thumb")
+        logger.warning("ffmpeg not found - cannot save user thumb")
         return None
     settings = get_settings()
     settings.thumb_dir.mkdir(parents=True, exist_ok=True)
@@ -76,13 +76,12 @@ def download_poster_thumb(poster_url: str, dest_dir: Path) -> Path | None:
     out = dest_dir / "poster_thumb.jpg"
     ff = _ffmpeg()
     try:
-        with httpx.Client(timeout=30) as client:
-            with client.stream("GET", poster_url) as r:
-                if r.status_code != 200:
-                    return None
-                with open(raw, "wb") as f:
-                    for chunk in r.iter_bytes(chunk_size=8192):
-                        f.write(chunk)
+        with httpx.Client(timeout=30) as client, client.stream("GET", poster_url) as r:
+            if r.status_code != 200:
+                return None
+            with open(raw, "wb") as f:
+                for chunk in r.iter_bytes(chunk_size=8192):
+                    f.write(chunk)
         if ff:
             subprocess.run(
                 [
@@ -149,7 +148,7 @@ def _video_duration(video_path: Path) -> float:
 def extract_video_thumb(video_path: Path, dest_dir: Path) -> Path | None:
     ff = _ffmpeg()
     if not ff:
-        logger.warning("ffmpeg not found – skip video thumb")
+        logger.warning("ffmpeg not found - skip video thumb")
         return None
     dest_dir.mkdir(parents=True, exist_ok=True)
     out = dest_dir / f"{video_path.stem}_thumb.jpg"

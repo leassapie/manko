@@ -1,6 +1,7 @@
 """Upload helpers, progress tracking, and caption building."""
 
 import asyncio
+import contextlib
 import time
 from pathlib import Path
 
@@ -18,10 +19,8 @@ async def progress_edit(status: Message, text: str) -> None:
         await status.edit_text(text, parse_mode=enums.ParseMode.HTML)
     except FloodWait as e:
         await asyncio.sleep(e.value)
-        try:
+        with contextlib.suppress(RPCError):
             await status.edit_text(text, parse_mode=enums.ParseMode.HTML)
-        except RPCError:
-            pass
     except RPCError:
         pass
 
@@ -44,13 +43,13 @@ async def send_document_no_reply(
     thumb: str | None = None,
     progress: object = None,
 ) -> None:
-    kwargs: dict = dict(
-        chat_id=chat_id,
-        document=document,
-        file_name=file_name,
-        caption=caption,
-        parse_mode=enums.ParseMode.HTML,
-    )
+    kwargs: dict = {
+        "chat_id": chat_id,
+        "document": document,
+        "file_name": file_name,
+        "caption": caption,
+        "parse_mode": enums.ParseMode.HTML,
+    }
     if thumb:
         kwargs["thumb"] = thumb
     if progress is not None:

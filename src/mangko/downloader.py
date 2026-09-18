@@ -4,7 +4,6 @@ Safe to call from async code via asyncio.to_thread.
 """
 
 import html as html_lib
-import json
 import re
 import shutil
 import subprocess
@@ -15,7 +14,6 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from mangko.utils import human_size, progress_bar
 
@@ -81,7 +79,7 @@ def ensure_dependencies(progress: ProgressCallback | None = None) -> None:
 
     for pkg in ("aria2c", "ffmpeg"):
         if shutil.which(pkg) is None:
-            log(f"WARNING: '{pkg}' not found in PATH – quality / speed may suffer.")
+            log(f"WARNING: '{pkg}' not found in PATH - quality / speed may suffer.")
     log("Dependency check done.")
 
 
@@ -138,7 +136,6 @@ def download_video(
             last_filename[0] = name
             progress(f"✅ Download finished\n<code>{Path(name).name}</code>")
 
-    last_err: Exception | None = None
     log(f"Downloading: {url}")
     log(f"Quality: {quality}")
 
@@ -179,13 +176,15 @@ def download_video(
 
 def download_subtitle(sub_url: str, sub_path: Path) -> bool:
     try:
-        with httpx.Client(timeout=30, headers=HEADERS) as client:
-            with client.stream("GET", sub_url) as r:
-                if r.status_code != 200:
-                    return False
-                with open(sub_path, "wb") as f:
-                    for chunk in r.iter_bytes(chunk_size=8192):
-                        f.write(chunk)
+        with (
+            httpx.Client(timeout=30, headers=HEADERS) as client,
+            client.stream("GET", sub_url) as r,
+        ):
+            if r.status_code != 200:
+                return False
+            with open(sub_path, "wb") as f:
+                for chunk in r.iter_bytes(chunk_size=8192):
+                    f.write(chunk)
         return True
     except Exception:
         return False
@@ -526,7 +525,7 @@ def process_url(
 
     ep_match = re.search(r"-(\d+)/?$", url.rstrip("/"))
     if not ep_match:
-        log("Could not parse episode number – keeping original video.")
+        log("Could not parse episode number - keeping original video.")
         return video_path
 
     ep_num = int(ep_match.group(1))
@@ -581,7 +580,7 @@ def process_url(
             if y not in years:
                 years.append(y)
 
-        log("Live resolve failed – trying known subtitle hosts...")
+        log("Live resolve failed - trying known subtitle hosts...")
         for host in sub_hosts:
             for y in years:
                 for slug in candidates:
@@ -604,7 +603,7 @@ def process_url(
         log(f"Finished: {final_mkv.name}")
         return final_mkv
 
-    log("No subtitle found – keeping original video.")
+    log("No subtitle found - keeping original video.")
     return video_path
 
 

@@ -3,7 +3,6 @@
 Replaces per-user JSON files with a single concurrent-safe database.
 """
 
-import json
 import logging
 import sqlite3
 import time

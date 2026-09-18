@@ -110,7 +110,7 @@ class SitemapSearch:
     def _score(self, query: str, slug: str, display: str) -> float:
         """Multi-strategy scoring using rapidfuzz."""
         # Exact match
-        if query == slug or query == display:
+        if query in (slug, display):
             return 100.0
         # Starts with
         if slug.startswith(query) or display.startswith(query):

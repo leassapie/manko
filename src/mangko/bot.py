@@ -1,6 +1,7 @@
 """Kurigram bot — handlers + orchestration."""
 
 import asyncio
+import contextlib
 import logging
 import re
 import shutil
@@ -20,14 +21,12 @@ from mangko.config import Settings
 from mangko.database import (
     get_history,
     get_stats,
-    get_user_prefs,
     save_download,
 )
 from mangko.downloader import (
     SeriesInfo,
     cleanup_old_files,
     episode_url_to_series_url,
-    ensure_dependencies,
     process_url,
     scrape_episode_list,
     scrape_series_info,
@@ -42,9 +41,9 @@ from mangko.thumb import (
 from mangko.uploader import (
     build_episode_caption,
     build_series_caption,
-    media_destinations,
     make_progress_cb,
     make_upload_progress,
+    media_destinations,
     progress_edit,
     send_document_no_reply,
     send_photo_no_reply,
@@ -53,9 +52,7 @@ from mangko.utils import (
     episode_number_from_url,
     html_escape,
     human_size,
-    progress_bar,
     rename_episode_file,
-    sys_stats_line,
 )
 
 logger = logging.getLogger("mangko")
@@ -197,7 +194,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
     # ── Search ──────────────────────────────────────────
     @app.on_callback_query(filters.regex("^menu_search$"))
     async def search_menu_cb(client: Client, callback: CallbackQuery) -> None:
-        set_state(uid, "await_search")
+        set_state(callback.from_user.id, "await_search")
         text = (
             "🔍 <b>Search Anime</b>\n\n"
             "Kirim judul anime yang ingin dicari.\n"
@@ -1140,7 +1137,7 @@ async def _process_urls(
         if series_info.poster_url:
             series_thumb = await loop.run_in_executor(
                 executor,
-                lambda: download_poster_thumb(series_info.poster_url, series_thumb_dir),
+                lambda _url=series_info.poster_url, _dir=series_thumb_dir: download_poster_thumb(_url, _dir),
             )
 
         await progress_edit(
@@ -1177,10 +1174,10 @@ async def _process_urls(
             try:
                 final_path: Path = await loop.run_in_executor(
                     executor,
-                    lambda _u=url: process_url(
+                    lambda _u=url, _pc=progress_cb: process_url(
                         _u, dest,
                         cookies_file=cookies_file,
-                        progress=progress_cb,
+                        progress=_pc,
                         quality=quality,
                         subtitle_lang=subtitle,
                     ),
@@ -1233,7 +1230,7 @@ async def _process_urls(
 
             thumb_path = await loop.run_in_executor(
                 executor,
-                lambda: resolve_doc_thumb(final_path, uid, series_thumb, series_thumb_dir),
+                lambda _fp=final_path, _u=uid, _st=series_thumb, _std=series_thumb_dir: resolve_doc_thumb(_fp, _u, _st, _std),
             )
 
             uploaded_ok = False
@@ -1260,10 +1257,8 @@ async def _process_urls(
                     await message.reply(text, parse_mode=enums.ParseMode.HTML)
 
             if not settings.keep_files and uploaded_ok:
-                try:
+                with contextlib.suppress(Exception):
                     final_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
 
             if settings.notify_dm and uid != message.chat.id:
                 try:

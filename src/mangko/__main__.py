@@ -3,7 +3,6 @@
 from mangko.bot import create_app, register_handlers
 from mangko.config import get_settings
 from mangko.database import init_db
-from mangko.download_queue import download_queue
 from mangko.downloader import ensure_dependencies
 from mangko.logging import get_logger, setup_logging
 

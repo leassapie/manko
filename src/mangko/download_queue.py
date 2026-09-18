@@ -4,15 +4,16 @@ Manages per-user and global download queues to prevent overload.
 """
 
 import asyncio
+import contextlib
 import logging
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 logger = logging.getLogger("mangko")
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -57,10 +58,8 @@ class DownloadQueue:
         self._running = False
         if self._worker_task:
             self._worker_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._worker_task
-            except asyncio.CancelledError:
-                pass
         logger.info("Download queue stopped")
 
     async def enqueue(
@@ -113,7 +112,7 @@ class DownloadQueue:
         while self._running:
             try:
                 job = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
             async with self._lock:
