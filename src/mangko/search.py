@@ -126,8 +126,8 @@ class SitemapSearch:
             return 75.0
         # rapidfuzz weighted ratio
         return max(
-            fuzz.weighted_ratio(query, slug),
-            fuzz.weighted_ratio(query, display),
+            fuzz.token_set_ratio(query, slug),
+            fuzz.token_set_ratio(query, display),
         )
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=5))
