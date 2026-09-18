@@ -659,21 +659,16 @@ def register_handlers(app: Client, settings: Settings) -> None:
             await callback.answer("Result expired, search again.", show_alert=True)
             return
         r = results[idx]
-        # Scrape full series info for episode list
-        loop = asyncio.get_running_loop()
-        info = await loop.run_in_executor(
-            executor, lambda: _search_engine.get_series_info(r.url)
-        )
-        ep_count = info.episodes or "?"
-        tags_str = ", ".join(info.tags[:6]) if info.tags else "—"
+        ep_count = r.episodes or "?"
+        tags_str = ", ".join(r.tags[:6]) if r.tags else "—"
         text = (
-            f"📖 <b>{html_escape(info.title)}</b>\n"
-            f"🏷️ Tags: {html_escape(tags_str)}\n"
+            f"📖 <b>{html_escape(r.title)}</b>\n"
+            f"🏷️ Genre: {html_escape(tags_str)}\n"
             f"📺 Episodes: <code>{ep_count}</code>\n"
-            f"📅 Year: <code>{info.year or '—'}</code>\n"
-            f"🌐 Studio: {html_escape(info.studio or '—')}\n\n"
+            f"📅 Year: <code>{r.year or '—'}</code>\n"
+            f"🌐 Studio: {html_escape(r.studio or '—')}\n\n"
             f"💡 Kirim link episode untuk download,\n"
-            f"atau gunakan /batch untuk semua episode."
+            f"atau gunakan tombol Batch Download."
         )
         kb = InlineKeyboardMarkup(
             [
@@ -823,11 +818,11 @@ async def _handle_search(
     )
 
     loop = asyncio.get_running_loop()
-    results = await loop.run_in_executor(
+    basic_results = await loop.run_in_executor(
         executor, lambda: _search_engine.search(query, limit=10)
     )
 
-    if not results:
+    if not basic_results:
         await status.edit_text(
             "🔍 Tidak ditemukan hasil.",
             parse_mode=enums.ParseMode.HTML,
@@ -835,21 +830,36 @@ async def _handle_search(
         )
         return
 
-    _search_results[uid] = results
     await status.edit_text(
-        f"🔍 Ditemukan <b>{len(results)}</b> hasil untuk "
+        f"🔍 Ditemukan <b>{len(basic_results)}</b> hasil.\n"
+        f"📥 Memuat detail...",
+        parse_mode=enums.ParseMode.HTML,
+        reply_markup=back_kb(),
+    )
+
+    # Fetch full info for each result in parallel
+    async def _fetch_info(r: object) -> object:
+        return await loop.run_in_executor(
+            executor, lambda: _search_engine.get_series_info(r.url)
+        )
+
+    detailed = await asyncio.gather(*[_fetch_info(r) for r in basic_results])
+    _search_results[uid] = list(detailed)
+
+    await status.edit_text(
+        f"🔍 <b>{len(detailed)}</b> hasil untuk "
         f"<code>{html_escape(query)}</code>",
         parse_mode=enums.ParseMode.HTML,
         reply_markup=back_kb(),
     )
 
-    for i, r in enumerate(results[:10]):
+    for i, r in enumerate(detailed):
         tags_str = ", ".join(r.tags[:5]) if r.tags else "—"
         ep_str = f"{r.episodes} eps" if r.episodes else "—"
         year_str = r.year or "—"
         caption = (
             f"📖 <b>{html_escape(r.title)}</b>\n"
-            f"🏷️ Tags: {html_escape(tags_str)}\n"
+            f"🏷️ Genre: {html_escape(tags_str)}\n"
             f"📺 Episodes: <code>{ep_str}</code>\n"
             f"📅 Year: <code>{year_str}</code>"
         )
@@ -860,6 +870,12 @@ async def _handle_search(
                         "📥 Download",
                         callback_data=f"search_dl_{i}",
                     ),
+                    InlineKeyboardButton(
+                        "📦 Batch",
+                        callback_data=f"search_batch_{i}",
+                    ),
+                ],
+                [
                     InlineKeyboardButton(
                         "🔗 Open",
                         url=r.url,
