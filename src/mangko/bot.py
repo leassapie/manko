@@ -137,16 +137,16 @@ def register_handlers(app: Client, settings: Settings) -> None:
         quality = get_quality(uid)
         subtitle = get_subtitle(uid)
 
-        status_line = (
-            f"🍪 {'✅' if cookies_ok else '❌'} • "
-            f"🎬 {quality} • "
-            f"💬 {subtitle}"
-        )
+        status_parts: list[str] = []
+        status_parts.append(f"{'✅' if cookies_ok else '❌'} Cookies")
+        status_parts.append(f"🎬 {quality}")
+        status_parts.append(f"💬 {subtitle}")
+        status_line = " • ".join(status_parts)
         text = (
             "👋 <b>Mangko</b>\n\n"
             "Download episode hstream.moe langsung ke Telegram.\n"
             "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
-            f"⚙️ {status_line}\n\n"
+            f"📊 {status_line}\n\n"
             "💡 Kirim link episode untuk langsung download,\n"
             "atau gunakan tombol di bawah."
         )
@@ -160,16 +160,16 @@ def register_handlers(app: Client, settings: Settings) -> None:
         quality = get_quality(uid)
         subtitle = get_subtitle(uid)
 
-        status_line = (
-            f"🍪 {'✅' if cookies_ok else '❌'} • "
-            f"🎬 {quality} • "
-            f"💬 {subtitle}"
-        )
+        status_parts: list[str] = []
+        status_parts.append(f"{'✅' if cookies_ok else '❌'} Cookies")
+        status_parts.append(f"🎬 {quality}")
+        status_parts.append(f"💬 {subtitle}")
+        status_line = " • ".join(status_parts)
         text = (
             "👋 <b>Mangko</b>\n\n"
             "Download episode hstream.moe langsung ke Telegram.\n"
             "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
-            f"⚙️ {status_line}\n\n"
+            f"📊 {status_line}\n\n"
             "💡 Kirim link episode untuk langsung download,\n"
             "atau gunakan tombol di bawah."
         )
