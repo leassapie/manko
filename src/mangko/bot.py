@@ -639,7 +639,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
         active_jobs.add(uid)
         try:
             await callback.message.edit_text("🚀 Memulai download...")
-            await _process_urls(client, callback.message, urls, settings, executor, active_jobs, user_dir, user_cookies_path, get_quality, get_subtitle)
+            await _process_urls(client, callback.message, urls, settings, executor, active_jobs, user_dir, user_cookies_path, uid, get_quality, get_subtitle)
         finally:
             active_jobs.discard(uid)
 
@@ -773,7 +773,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
             await _process_urls(
                 client, callback.message, [ep_url],
                 settings, executor, active_jobs,
-                user_dir, user_cookies_path, get_quality, get_subtitle,
+                user_dir, user_cookies_path, uid, get_quality, get_subtitle,
             )
         finally:
             active_jobs.discard(uid)
@@ -887,7 +887,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
             await _process_urls(
                 client, callback.message, episode_urls,
                 settings, executor, active_jobs,
-                user_dir, user_cookies_path, get_quality, get_subtitle,
+                user_dir, user_cookies_path, uid, get_quality, get_subtitle,
             )
         finally:
             active_jobs.discard(uid)
@@ -1079,10 +1079,11 @@ async def _process_urls(
     active_jobs: set[int],
     user_dir_fn: object,
     user_cookies_path_fn: object,
+    user_id: int,
     get_quality_fn: object = None,
     get_subtitle_fn: object = None,
 ) -> None:
-    uid = message.from_user.id
+    uid = user_id
     dest = settings.download_root / str(uid)
     dest.mkdir(parents=True, exist_ok=True)
 
