@@ -462,14 +462,20 @@ def scrape_episode_list(
         log(f"Series page failed: {e}")
         return episodes
 
+    # Match both full URLs and relative paths for episode links
+    # e.g. https://hstream.moe/hentai/overflow-1 or /hentai/overflow-1
     pattern = re.compile(
-        r'href=["\'](/hentai/[^"\']+/(\d+))["\'][^>]*>.*?</a>',
-        re.I | re.S,
+        r'href=["\'](?:https?://hstream\.moe)?(/hentai/[\w\-]+-(\d+))["\']',
+        re.I,
     )
+    seen: set[str] = set()
     for m in pattern.finditer(page):
-        ep_url = m.group(1)
+        ep_path = m.group(1)
         ep_num = m.group(2)
-        full_url = f"https://hstream.moe{ep_url}" if not ep_url.startswith("http") else ep_url
+        if ep_path in seen:
+            continue
+        seen.add(ep_path)
+        full_url = f"https://hstream.moe{ep_path}"
         episodes.append({"url": full_url, "number": ep_num})
 
     log(f"Found {len(episodes)} episodes")
