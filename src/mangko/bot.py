@@ -659,34 +659,107 @@ def register_handlers(app: Client, settings: Settings) -> None:
             await callback.answer("Result expired, search again.", show_alert=True)
             return
         r = results[idx]
-        ep_count = r.episodes or "?"
-        tags_str = ", ".join(r.tags[:6]) if r.tags else "—"
+
+        # Scrape episode list
+        loop = asyncio.get_running_loop()
+        cookies = settings.cookies_dir / f"{uid}.txt"
+        cookies_file = cookies if cookies.exists() else None
+
+        await callback.answer("Loading episodes...")
+        episodes = await loop.run_in_executor(
+            executor,
+            lambda: scrape_episode_list(r.url, cookies_file=cookies_file),
+        )
+
+        if not episodes:
+            await callback.message.edit_text(
+                "❌ Tidak ditemukan episode.",
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=back_kb(),
+            )
+            return
+
+        # Store episodes for this result
+        if not hasattr(_handle_search, "_episodes"):
+            _handle_search._episodes = {}
+        _handle_search._episodes[(uid, idx)] = episodes
+
+        tags_str = ", ".join(r.tags[:5]) if r.tags else "—"
         text = (
             f"📖 <b>{html_escape(r.title)}</b>\n"
             f"🏷️ Genre: {html_escape(tags_str)}\n"
-            f"📺 Episodes: <code>{ep_count}</code>\n"
             f"📅 Year: <code>{r.year or '—'}</code>\n"
             f"🌐 Studio: {html_escape(r.studio or '—')}\n\n"
-            f"💡 Kirim link episode untuk download,\n"
-            f"atau gunakan tombol Batch Download."
+            f"📺 Pilih episode untuk download:"
         )
-        kb = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "📦 Batch Download",
-                        callback_data=f"search_batch_{idx}",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton("◀️ Kembali", callback_data="menu"),
-                ],
-            ]
-        )
+
+        # Build episode buttons in grid (3 per row)
+        kb_buttons: list[list[InlineKeyboardButton]] = []
+        row: list[InlineKeyboardButton] = []
+        for ep in episodes:
+            ep_num = ep["number"]
+            row.append(InlineKeyboardButton(
+                f"▶️ Ep {ep_num}",
+                callback_data=f"sdep_{idx}_{ep_num}",
+            ))
+            if len(row) == 3:
+                kb_buttons.append(row)
+                row = []
+        if row:
+            kb_buttons.append(row)
+
+        # Add batch + back buttons
+        kb_buttons.append([
+            InlineKeyboardButton(
+                f"📦 Download All ({len(episodes)} eps)",
+                callback_data=f"search_batch_{idx}",
+            ),
+        ])
+        kb_buttons.append([
+            InlineKeyboardButton("◀️ Kembali", callback_data="menu"),
+        ])
+
+        kb = InlineKeyboardMarkup(kb_buttons)
         await callback.message.edit_text(
             text, parse_mode=enums.ParseMode.HTML, reply_markup=kb
         )
-        await callback.answer()
+
+    # ── Search Episode Download Callback ───────────────
+    @app.on_callback_query(filters.regex(r"^sdep_(\d+)_(\d+)$"))
+    async def search_ep_download_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        parts = callback.data.split("_")
+        idx = int(parts[1])
+        ep_num = parts[2]
+
+        episodes_map = getattr(_handle_search, "_episodes", {})
+        episodes = episodes_map.get((uid, idx), [])
+        ep_url = None
+        for ep in episodes:
+            if ep["number"] == ep_num:
+                ep_url = ep["url"]
+                break
+
+        if not ep_url:
+            await callback.answer("Episode not found, search again.", show_alert=True)
+            return
+
+        if uid in active_jobs:
+            await callback.answer("Job sudah berjalan.", show_alert=True)
+            return
+
+        active_jobs.add(uid)
+        try:
+            await callback.message.edit_text(
+                f"🚀 <b>Download Ep {ep_num}</b>\n\n<code>{ep_url}</code>"
+            )
+            await _process_urls(
+                client, callback.message, [ep_url],
+                settings, executor, active_jobs,
+                user_dir, user_cookies_path, get_quality, get_subtitle,
+            )
+        finally:
+            active_jobs.discard(uid)
 
     # ── Search Result Batch Callback ───────────────────
     @app.on_callback_query(filters.regex(r"^search_batch_(\d+)$"))
