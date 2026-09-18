@@ -17,15 +17,18 @@ from pyrogram.types import (
 )
 
 from mangko.config import Settings
+from mangko.database import (
+    get_history,
+    get_stats,
+    get_user_prefs,
+    save_download,
+)
 from mangko.downloader import (
     SeriesInfo,
     cleanup_old_files,
     episode_url_to_series_url,
     ensure_dependencies,
-    get_download_history,
-    get_user_stats,
     process_url,
-    save_download_history,
     scrape_episode_list,
     scrape_series_info,
 )
@@ -102,8 +105,6 @@ def back_kb(target: str = "menu") -> InlineKeyboardMarkup:
 
 def register_handlers(app: Client, settings: Settings) -> None:
     active_jobs: set[int] = set()
-    user_quality: dict[int, str] = {}
-    user_subtitle: dict[int, str] = {}
     executor = ThreadPoolExecutor(max_workers=settings.workers)
 
     def user_dir(user_id: int) -> Path:
@@ -115,20 +116,24 @@ def register_handlers(app: Client, settings: Settings) -> None:
         return settings.cookies_dir / f"{user_id}.txt"
 
     def get_quality(uid: int) -> str:
-        return user_quality.get(uid, settings.default_quality)
+        from mangko.database import get_user_quality
+        return get_user_quality(uid, settings.default_quality)
 
     def get_subtitle(uid: int) -> str:
-        return user_subtitle.get(uid, settings.default_subtitle)
+        from mangko.database import get_user_subtitle
+        return get_user_subtitle(uid, settings.default_subtitle)
 
-    def clear_flag(prefix: str, uid: int) -> None:
-        flag = settings.cookies_dir / f"{prefix}_{uid}"
-        flag.unlink(missing_ok=True)
+    # In-memory user state (replaces file-based flags)
+    user_state: dict[int, str] = {}  # uid → state name
 
-    def set_flag(prefix: str, uid: int) -> None:
-        (settings.cookies_dir / f"{prefix}_{uid}").touch()
+    def clear_state(uid: int) -> None:
+        user_state.pop(uid, None)
 
-    def has_flag(prefix: str, uid: int) -> bool:
-        return (settings.cookies_dir / f"{prefix}_{uid}").exists()
+    def set_state(uid: int, state: str) -> None:
+        user_state[uid] = state
+
+    def has_state(uid: int, state: str) -> bool:
+        return user_state.get(uid) == state
 
     # ── /start ──────────────────────────────────────────
     @app.on_message(filters.command("start"))
@@ -192,7 +197,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
     # ── Search ──────────────────────────────────────────
     @app.on_callback_query(filters.regex("^menu_search$"))
     async def search_menu_cb(client: Client, callback: CallbackQuery) -> None:
-        set_flag("await_search", callback.from_user.id)
+        set_state(uid, "await_search")
         text = (
             "🔍 <b>Search Anime</b>\n\n"
             "Kirim judul anime yang ingin dicari.\n"
@@ -203,7 +208,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
     # ── Batch ───────────────────────────────────────────
     @app.on_callback_query(filters.regex("^menu_batch$"))
     async def batch_menu_cb(client: Client, callback: CallbackQuery) -> None:
-        set_flag("await_batch", callback.from_user.id)
+        set_state(callback.from_user.id, "await_batch")
         text = (
             "📦 <b>Batch Download</b>\n\n"
             "Kirim link series untuk download semua episode.\n"
@@ -250,7 +255,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
         uid = callback.from_user.id
         has_cookies = user_cookies_path(uid).exists()
         status = "✅ Sudah ada" if has_cookies else "❌ Belum ada"
-        set_flag("await", uid)
+        set_state(uid, "await")
         text = (
             "🍪 <b>Setup Cookies</b>\n\n"
             f"Status: {status}\n\n"
@@ -265,7 +270,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
         uid = callback.from_user.id
         path = user_thumb_path(uid)
         status = "✅ Sudah ada" if path.exists() else "❌ Belum ada"
-        set_flag("await_thumb", uid)
+        set_state(uid, "await_thumb")
         text = (
             "🖼 <b>Setup Thumbnail</b>\n\n"
             f"Status: {status}\n\n"
@@ -303,9 +308,10 @@ def register_handlers(app: Client, settings: Settings) -> None:
 
     @app.on_callback_query(filters.regex("^q_(best|2160p|1080p|720p|480p|360p)$"))
     async def quality_cb(client: Client, callback: CallbackQuery) -> None:
+        from mangko.database import set_user_quality
         uid = callback.from_user.id
         quality = callback.data.split("_", 1)[1]
-        user_quality[uid] = quality
+        set_user_quality(uid, quality)
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
         )
@@ -340,9 +346,10 @@ def register_handlers(app: Client, settings: Settings) -> None:
 
     @app.on_callback_query(filters.regex("^sub_(en|id|jp)$"))
     async def subtitle_cb(client: Client, callback: CallbackQuery) -> None:
+        from mangko.database import set_user_subtitle
         uid = callback.from_user.id
         subtitle = callback.data.split("_", 1)[1]
-        user_subtitle[uid] = subtitle
+        set_user_subtitle(uid, subtitle)
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
         )
@@ -414,7 +421,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
     @app.on_callback_query(filters.regex("^menu_history$"))
     async def history_menu_cb(client: Client, callback: CallbackQuery) -> None:
         uid = callback.from_user.id
-        history = get_download_history(settings.history_dir, uid, limit=5)
+        history = get_history(uid, limit=5)
         if not history:
             text = "📜 <b>History</b>\n\nBelum ada download."
             kb = back_kb()
@@ -457,7 +464,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
     @app.on_message(filters.command("stats"))
     async def stats_cmd(client: Client, message: Message) -> None:
         uid = message.from_user.id
-        stats = get_user_stats(settings.history_dir, uid)
+        stats = get_stats(uid)
         text = (
             f"📊 <b>Stats</b>\n\n"
             f"📥 Total download: <b>{stats['total_downloads']}</b>\n"
@@ -503,7 +510,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
     @app.on_message(filters.document)
     async def handle_document(client: Client, message: Message) -> None:
         uid = message.from_user.id
-        if not has_flag("await", uid):
+        if not has_state(uid, "await"):
             return
         doc: Document = message.document
         name = (doc.file_name or "").lower()
@@ -517,7 +524,7 @@ def register_handlers(app: Client, settings: Settings) -> None:
             return
         dest = user_cookies_path(uid)
         await message.download(file_name=str(dest))
-        clear_flag("await", uid)
+        clear_state(uid)
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
         )
@@ -531,12 +538,12 @@ def register_handlers(app: Client, settings: Settings) -> None:
     @app.on_message(filters.photo)
     async def handle_photo(client: Client, message: Message) -> None:
         uid = message.from_user.id
-        if not has_flag("await_thumb", uid):
+        if not has_state(uid, "await_thumb"):
             return
         dl = await message.download()
         out = create_user_thumb(Path(dl), uid)
         Path(dl).unlink(missing_ok=True)
-        clear_flag("await_thumb", uid)
+        clear_state(uid)
         kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("◀️ Kembali", callback_data="menu_settings")]]
         )
@@ -553,13 +560,13 @@ def register_handlers(app: Client, settings: Settings) -> None:
         uid = message.from_user.id
         text = (message.text or "").strip()
 
-        if has_flag("await_search", uid):
-            clear_flag("await_search", uid)
+        if has_state(uid, "await_search"):
+            clear_state(uid)
             await _handle_search(client, message, text, settings, executor)
             return
 
-        if has_flag("await_batch", uid):
-            clear_flag("await_batch", uid)
+        if has_state(uid, "await_batch"):
+            clear_state(uid)
             await _handle_batch(client, message, text, settings, executor, active_jobs, user_dir, user_cookies_path, get_quality, get_subtitle)
             return
 
@@ -1200,8 +1207,7 @@ async def _process_urls(
             has_subs = final_path.suffix.lower() == ".mkv"
             ep_caption = build_episode_caption(anime_title, ep_num, final_path, has_subs)
 
-            save_download_history(
-                settings.history_dir,
+            save_download(
                 uid,
                 url,
                 final_path.name,

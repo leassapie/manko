@@ -1,17 +1,16 @@
 """Sitemap-based fuzzy search for hstream.moe.
 
-Parses sitemap.xml for all series URLs, builds a local index,
-and uses fuzzy matching for search. On-demand scrapes individual
-series pages for full metadata (poster, tags, episodes).
+Uses async httpx, rapidfuzz for fast matching, tenacity for retry.
 """
 
 import logging
 import re
 import time
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 
-import requests
+import httpx
+from rapidfuzz import fuzz
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger("mangko")
 
@@ -51,19 +50,20 @@ class SitemapSearch:
             return
         self._load_sitemap()
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     def _load_sitemap(self) -> None:
         try:
-            r = requests.get(SITEMAP_URL, headers=HEADERS, timeout=30)
-            if r.status_code != 200:
-                logger.warning("Sitemap HTTP %d", r.status_code)
-                return
+            with httpx.Client(timeout=30, headers=HEADERS) as client:
+                r = client.get(SITEMAP_URL)
+                if r.status_code != 200:
+                    logger.warning("Sitemap HTTP %d", r.status_code)
+                    return
             urls = re.findall(
                 r"<loc>(https://hstream\.moe/hentai/[^<]+)</loc>", r.text
             )
             index: dict[str, str] = {}
             for url in urls:
                 slug = url.rstrip("/").split("/")[-1]
-                # Normalize: strip trailing episode number for series grouping
                 series_slug = re.sub(r"-\d+$", "", slug)
                 series_url = f"https://hstream.moe/hentai/{series_slug}"
                 if series_slug not in index:
@@ -86,7 +86,7 @@ class SitemapSearch:
         for slug, url in self._index.items():
             slug_display = slug.replace("-", " ")
             score = self._score(query_lower, slug, slug_display)
-            if score > 0.15:
+            if score > 15:
                 scored.append((score, slug, url))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -108,27 +108,29 @@ class SitemapSearch:
         return results
 
     def _score(self, query: str, slug: str, display: str) -> float:
-        """Multi-strategy scoring for better fuzzy matching."""
+        """Multi-strategy scoring using rapidfuzz."""
         # Exact match
         if query == slug or query == display:
-            return 1.0
+            return 100.0
         # Starts with
         if slug.startswith(query) or display.startswith(query):
-            return 0.9
+            return 90.0
         # Contains
         if query in slug or query in display:
-            return 0.8
+            return 80.0
         # Word match
         query_words = query.split()
         slug_words = display.split()
         word_hits = sum(1 for w in query_words if any(w in sw for sw in slug_words))
         if word_hits == len(query_words) and query_words:
-            return 0.75
-        # Sequence matcher (fuzzy)
-        ratio = SequenceMatcher(None, query, slug).ratio()
-        ratio2 = SequenceMatcher(None, query, display).ratio()
-        return max(ratio, ratio2)
+            return 75.0
+        # rapidfuzz weighted ratio
+        return max(
+            fuzz.weighted_ratio(query, slug),
+            fuzz.weighted_ratio(query, display),
+        )
 
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=5))
     def get_series_info(self, series_url: str) -> SearchResult:
         """Scrape individual series page for full metadata."""
         if series_url in self._series_cache:
@@ -141,9 +143,11 @@ class SitemapSearch:
         )
         try:
             import html as html_lib
-            r = requests.get(series_url, headers=HEADERS, timeout=30)
-            if r.status_code != 200:
-                return result
+
+            with httpx.Client(timeout=30, headers=HEADERS) as client:
+                r = client.get(series_url)
+                if r.status_code != 200:
+                    return result
             page = r.text
 
             # Title

@@ -13,7 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import requests
+import httpx
 
 from mangko.config import get_settings
 
@@ -76,12 +76,12 @@ def download_poster_thumb(poster_url: str, dest_dir: Path) -> Path | None:
     out = dest_dir / "poster_thumb.jpg"
     ff = _ffmpeg()
     try:
-        with requests.get(poster_url, stream=True, timeout=30) as r:
-            if r.status_code != 200:
-                return None
-            with open(raw, "wb") as f:
-                for chunk in r.iter_content(8192):
-                    if chunk:
+        with httpx.Client(timeout=30) as client:
+            with client.stream("GET", poster_url) as r:
+                if r.status_code != 200:
+                    return None
+                with open(raw, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=8192):
                         f.write(chunk)
         if ff:
             subprocess.run(

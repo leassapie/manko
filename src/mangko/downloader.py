@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
 
-import requests
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from mangko.utils import human_size, progress_bar
 
@@ -33,6 +34,14 @@ SUBTITLE_MAP = {
     "en": "eng",
     "id": "ind",
     "jp": "jpn",
+}
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://hstream.moe/",
 }
 
 
@@ -170,12 +179,12 @@ def download_video(
 
 def download_subtitle(sub_url: str, sub_path: Path) -> bool:
     try:
-        with requests.get(sub_url, stream=True, timeout=30) as r:
-            if r.status_code != 200:
-                return False
-            with open(sub_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
+        with httpx.Client(timeout=30, headers=HEADERS) as client:
+            with client.stream("GET", sub_url) as r:
+                if r.status_code != 200:
+                    return False
+                with open(sub_path, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=8192):
                         f.write(chunk)
         return True
     except Exception:
@@ -219,7 +228,8 @@ def resolve_subtitle_url(
 
     html = ""
     try:
-        r = requests.get(page_url, headers=headers, timeout=30)
+        with httpx.Client(timeout=30, headers=headers) as client:
+            r = client.get(page_url)
         if r.status_code == 200:
             html = r.text
             found: list[str] = []
@@ -265,19 +275,16 @@ def resolve_subtitle_url(
                     api["X-XSRF-TOKEN"] = unquote(part.split("=", 1)[1])
                     break
 
-        resp = requests.post(
-            "https://hstream.moe/player/api",
-            headers=api,
-            json={"episode_id": e_id},
-            timeout=30,
-        )
-        if resp.status_code != 200:
-            resp = requests.post(
+        with httpx.Client(timeout=30, headers=api) as client:
+            resp = client.post(
                 "https://hstream.moe/player/api",
-                headers=api,
-                data={"episode_id": e_id},
-                timeout=30,
+                json={"episode_id": e_id},
             )
+            if resp.status_code != 200:
+                resp = client.post(
+                    "https://hstream.moe/player/api",
+                    data={"episode_id": e_id},
+                )
         if resp.status_code != 200:
             log(f"  player API HTTP {resp.status_code}")
             return None
@@ -355,7 +362,8 @@ def scrape_series_info(
         headers["Cookie"] = ch
 
     try:
-        r = requests.get(series_url, headers=headers, timeout=30)
+        with httpx.Client(timeout=30, headers=headers) as client:
+            r = client.get(series_url)
         if r.status_code != 200:
             log(f"Series page HTTP {r.status_code}")
             return info
@@ -453,7 +461,8 @@ def scrape_episode_list(
         headers["Cookie"] = ch
 
     try:
-        r = requests.get(series_url, headers=headers, timeout=30)
+        with httpx.Client(timeout=30, headers=headers) as client:
+            r = client.get(series_url)
         if r.status_code != 200:
             log(f"Series page HTTP {r.status_code}")
             return episodes
@@ -464,8 +473,10 @@ def scrape_episode_list(
 
     # Match both full URLs and relative paths for episode links
     # e.g. https://hstream.moe/hentai/overflow-1 or /hentai/overflow-1
+    # Extract current series slug to filter out related series
+    series_slug = re.sub(r"-\d+$", "", series_url.rstrip("/").split("/")[-1])
     pattern = re.compile(
-        r'href=["\'](?:https?://hstream\.moe)?(/hentai/[\w\-]+-(\d+))["\']',
+        r'href=["\'](?:https?://hstream\.moe)?(/hentai/' + re.escape(series_slug) + r'-(\d+))["\']',
         re.I,
     )
     seen: set[str] = set()
@@ -595,62 +606,6 @@ def process_url(
 
     log("No subtitle found – keeping original video.")
     return video_path
-
-
-def save_download_history(
-    history_dir: Path,
-    user_id: int,
-    url: str,
-    filename: str,
-    size: int,
-    quality: str,
-) -> None:
-    history_file = history_dir / f"{user_id}.json"
-    history: list[dict] = []
-    if history_file.exists():
-        try:
-            history = json.loads(history_file.read_text())
-        except Exception:
-            history = []
-    history.append({
-        "url": url,
-        "filename": filename,
-        "size": size,
-        "quality": quality,
-        "timestamp": time.time(),
-    })
-    history_file.write_text(json.dumps(history, indent=2))
-
-
-def get_download_history(history_dir: Path, user_id: int, limit: int = 10) -> list[dict]:
-    history_file = history_dir / f"{user_id}.json"
-    if not history_file.exists():
-        return []
-    try:
-        history = json.loads(history_file.read_text())
-        return history[-limit:]
-    except Exception:
-        return []
-
-
-def get_user_stats(history_dir: Path, user_id: int) -> dict:
-    history_file = history_dir / f"{user_id}.json"
-    if not history_file.exists():
-        return {"total_downloads": 0, "total_size": 0, "formats": {}}
-    try:
-        history = json.loads(history_file.read_text())
-        total_size = sum(h.get("size", 0) for h in history)
-        formats: dict[str, int] = {}
-        for h in history:
-            q = h.get("quality", "unknown")
-            formats[q] = formats.get(q, 0) + 1
-        return {
-            "total_downloads": len(history),
-            "total_size": total_size,
-            "formats": formats,
-        }
-    except Exception:
-        return {"total_downloads": 0, "total_size": 0, "formats": {}}
 
 
 def cleanup_old_files(download_root: Path, max_age_days: int) -> int:
