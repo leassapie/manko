@@ -20,12 +20,12 @@ from mangko.utils import human_size, progress_bar
 type ProgressCallback = Callable[[str], None]
 
 QUALITY_MAP = {
-    "best": "bestvideo+bestaudio/best",
-    "2160p": "bestvideo[height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best",
-    "1080p": "bestvideo[height<=1080]+bestaudio/bestvideo[height<=1080]+bestaudio/best",
-    "720p": "bestvideo[height<=720]+bestaudio/bestvideo[height<=720]+bestaudio/best",
-    "480p": "bestvideo[height<=480]+bestaudio/bestvideo[height<=480]+bestaudio/best",
-    "360p": "bestvideo[height<=360]+bestaudio/bestvideo[height<=360]+bestaudio/best",
+    "best": None,
+    "2160p": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+    "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]",
+    "480p": "bestvideo[height<=480]+bestaudio/best[height<=480]",
+    "360p": "bestvideo[height<=360]+bestaudio/best[height<=360]",
 }
 
 SUBTITLE_MAP = {
@@ -140,7 +140,6 @@ def download_video(
     log(f"Quality: {quality}")
 
     ydl_opts: dict = {
-        "format": format_string,
         "outtmpl": output_template,
         "noplaylist": True,
         "retries": 5,
@@ -151,6 +150,8 @@ def download_video(
         "no_warnings": True,
         "noprogress": True,
     }
+    if format_string:
+        ydl_opts["format"] = format_string
     if shutil.which("aria2c"):
         ydl_opts["external_downloader"] = "aria2c"
         ydl_opts["external_downloader_args"] = {
@@ -163,9 +164,10 @@ def download_video(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except Exception as e:
-        if "Requested format is not available" in str(e) and format_string != "best":
+        err_str = str(e)
+        if "Requested format is not available" in err_str and format_string:
             log(f"Format '{format_string}' unavailable, retrying with best...")
-            ydl_opts["format"] = "best"
+            ydl_opts.pop("format", None)
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
