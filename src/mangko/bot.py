@@ -29,6 +29,7 @@ from mangko.downloader import (
     scrape_episode_list,
     scrape_series_info,
 )
+from mangko.search import SitemapSearch
 from mangko.thumb import (
     create_user_thumb,
     download_poster_thumb,
@@ -57,6 +58,10 @@ from mangko.utils import (
 logger = logging.getLogger("mangko")
 
 URL_RE = re.compile(r"https?://(?:www\.)?hstream\.moe/hentai/[\w\-]+/?", re.I)
+
+# Global search engine and result cache
+_search_engine = SitemapSearch()
+_search_results: dict[int, list] = {}  # uid → list of SearchResult
 
 
 def create_app(settings: Settings) -> Client:
@@ -132,10 +137,16 @@ def register_handlers(app: Client, settings: Settings) -> None:
         quality = get_quality(uid)
         subtitle = get_subtitle(uid)
 
+        status_line = (
+            f"🍪 {'✅' if cookies_ok else '❌'} • "
+            f"🎬 {quality} • "
+            f"💬 {subtitle}"
+        )
         text = (
             "👋 <b>Mangko</b>\n\n"
             "Download episode hstream.moe langsung ke Telegram.\n"
             "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
+            f"⚙️ {status_line}\n\n"
             "💡 Kirim link episode untuk langsung download,\n"
             "atau gunakan tombol di bawah."
         )
@@ -149,10 +160,16 @@ def register_handlers(app: Client, settings: Settings) -> None:
         quality = get_quality(uid)
         subtitle = get_subtitle(uid)
 
+        status_line = (
+            f"🍪 {'✅' if cookies_ok else '❌'} • "
+            f"🎬 {quality} • "
+            f"💬 {subtitle}"
+        )
         text = (
             "👋 <b>Mangko</b>\n\n"
             "Download episode hstream.moe langsung ke Telegram.\n"
             "Quality terbaik, subtitle pilihan, remux MKV.\n\n"
+            f"⚙️ {status_line}\n\n"
             "💡 Kirim link episode untuk langsung download,\n"
             "atau gunakan tombol di bawah."
         )
@@ -632,6 +649,164 @@ def register_handlers(app: Client, settings: Settings) -> None:
         )
         await callback.message.edit_text("🛑 Job dibatalkan.", reply_markup=kb)
 
+    # ── Search Result Download Callback ────────────────
+    @app.on_callback_query(filters.regex(r"^search_dl_(\d+)$"))
+    async def search_download_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        idx = int(callback.data.split("_")[-1])
+        results = _search_results.get(uid, [])
+        if idx >= len(results):
+            await callback.answer("Result expired, search again.", show_alert=True)
+            return
+        r = results[idx]
+        # Scrape full series info for episode list
+        loop = asyncio.get_running_loop()
+        info = await loop.run_in_executor(
+            executor, lambda: _search_engine.get_series_info(r.url)
+        )
+        ep_count = info.episodes or "?"
+        tags_str = ", ".join(info.tags[:6]) if info.tags else "—"
+        text = (
+            f"📖 <b>{html_escape(info.title)}</b>\n"
+            f"🏷️ Tags: {html_escape(tags_str)}\n"
+            f"📺 Episodes: <code>{ep_count}</code>\n"
+            f"📅 Year: <code>{info.year or '—'}</code>\n"
+            f"🌐 Studio: {html_escape(info.studio or '—')}\n\n"
+            f"💡 Kirim link episode untuk download,\n"
+            f"atau gunakan /batch untuk semua episode."
+        )
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "📦 Batch Download",
+                        callback_data=f"search_batch_{idx}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton("◀️ Kembali", callback_data="menu"),
+                ],
+            ]
+        )
+        await callback.message.edit_text(
+            text, parse_mode=enums.ParseMode.HTML, reply_markup=kb
+        )
+        await callback.answer()
+
+    # ── Search Result Batch Callback ───────────────────
+    @app.on_callback_query(filters.regex(r"^search_batch_(\d+)$"))
+    async def search_batch_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        idx = int(callback.data.split("_")[-1])
+        results = _search_results.get(uid, [])
+        if idx >= len(results):
+            await callback.answer("Result expired, search again.", show_alert=True)
+            return
+        r = results[idx]
+        if uid in active_jobs:
+            await callback.answer("Job sudah berjalan.", show_alert=True)
+            return
+
+        # Scrape episode list from series URL
+        loop = asyncio.get_running_loop()
+        cookies = settings.cookies_dir / f"{uid}.txt"
+        cookies_file = cookies if cookies.exists() else None
+
+        await callback.message.edit_text(
+            f"📦 <b>Memuat episodes...</b>\n\n"
+            f"<b>{html_escape(r.title)}</b>"
+        )
+
+        episodes = await loop.run_in_executor(
+            executor,
+            lambda: scrape_episode_list(r.url, cookies_file=cookies_file),
+        )
+
+        if not episodes:
+            await callback.message.edit_text(
+                "❌ Tidak ditemukan episode.",
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=back_kb(),
+            )
+            return
+
+        quality = get_quality(uid)
+        subtitle = get_subtitle(uid)
+        text = (
+            f"📦 <b>Batch Download</b>\n\n"
+            f"📖 <b>{html_escape(r.title)}</b>\n"
+            f"📺 Ditemukan <b>{len(episodes)}</b> episode\n"
+            f"🎬 Quality: <code>{quality}</code>\n"
+            f"💬 Subtitle: <code>{subtitle}</code>\n\n"
+            f"Konfirmasi download?"
+        )
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        f"✅ Download All ({len(episodes)} eps)",
+                        callback_data=f"search_confirm_batch_{idx}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton("❌ Batal", callback_data="cancel_job"),
+                ],
+            ]
+        )
+        await callback.message.edit_text(
+            text, parse_mode=enums.ParseMode.HTML, reply_markup=kb
+        )
+        await callback.answer()
+
+    # ── Search Confirm Batch Callback ──────────────────
+    @app.on_callback_query(filters.regex(r"^search_confirm_batch_(\d+)$"))
+    async def search_confirm_batch_cb(client: Client, callback: CallbackQuery) -> None:
+        uid = callback.from_user.id
+        idx = int(callback.data.split("_")[-1])
+        results = _search_results.get(uid, [])
+        if idx >= len(results):
+            await callback.answer("Result expired, search again.", show_alert=True)
+            return
+        r = results[idx]
+        if uid in active_jobs:
+            await callback.answer("Job sudah berjalan.", show_alert=True)
+            return
+
+        # Scrape episode list
+        loop = asyncio.get_running_loop()
+        cookies = settings.cookies_dir / f"{uid}.txt"
+        cookies_file = cookies if cookies.exists() else None
+
+        episodes = await loop.run_in_executor(
+            executor,
+            lambda: scrape_episode_list(r.url, cookies_file=cookies_file),
+        )
+
+        if not episodes:
+            await callback.message.edit_text(
+                "❌ Tidak ditemukan episode.",
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=back_kb(),
+            )
+            return
+
+        # Build episode URLs
+        episode_urls = [ep["url"] for ep in episodes]
+        active_jobs.add(uid)
+        try:
+            await callback.message.edit_text(
+                f"🚀 <b>Memulai batch download...</b>\n\n"
+                f"📖 {html_escape(r.title)}\n"
+                f"📺 {len(episode_urls)} episodes"
+            )
+            await _process_urls(
+                client, callback.message, episode_urls,
+                settings, executor, active_jobs,
+                user_dir, user_cookies_path, get_quality, get_subtitle,
+            )
+        finally:
+            active_jobs.discard(uid)
+
 
 async def _handle_search(
     client: Client,
@@ -641,71 +816,78 @@ async def _handle_search(
     executor: ThreadPoolExecutor,
 ) -> None:
     uid = message.from_user.id
-    kb = back_kb()
     status = await message.reply(
         f"🔍 Mencari <code>{html_escape(query)}</code>...",
         parse_mode=enums.ParseMode.HTML,
-        reply_markup=kb,
+        reply_markup=back_kb(),
     )
 
     loop = asyncio.get_running_loop()
-
-    def _search() -> list[dict[str, str]]:
-        import requests as req
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            ),
-        }
-        try:
-            r = req.get(
-                f"https://hstream.moe/search?q={query}",
-                headers=headers,
-                timeout=30,
-            )
-            if r.status_code != 200:
-                return []
-            page = r.text
-            results = []
-            pattern = re.compile(
-                r'href=["\'](/hentai/[^"\']+)["\'][^>]*>.*?<img[^>]+src=["\']([^"\']+)["\'].*?</a>',
-                re.I | re.S,
-            )
-            for m in pattern.finditer(page):
-                url = m.group(1)
-                thumb = m.group(2)
-                slug = url.rstrip("/").split("/")[-1]
-                title = slug.replace("-", " ").title()
-                full_url = f"https://hstream.moe{url}" if not url.startswith("http") else url
-                full_thumb = f"https://hstream.moe{thumb}" if not thumb.startswith("http") else thumb
-                results.append({
-                    "url": full_url,
-                    "title": title,
-                    "thumb": full_thumb,
-                })
-            return results[:10]
-        except Exception:
-            return []
-
-    results = await loop.run_in_executor(executor, _search)
+    results = await loop.run_in_executor(
+        executor, lambda: _search_engine.search(query, limit=10)
+    )
 
     if not results:
-        kb = back_kb()
         await status.edit_text(
             "🔍 Tidak ditemukan hasil.",
             parse_mode=enums.ParseMode.HTML,
-            reply_markup=kb,
+            reply_markup=back_kb(),
         )
         return
 
-    text = f"🔍 <b>Hasil Pencarian</b>\n\n"
-    for i, r in enumerate(results, 1):
-        text += f"{i}. <b>{html_escape(r['title'])}</code>\n"
-        text += f"   <code>{r['url']}</code>\n"
+    _search_results[uid] = results
+    await status.edit_text(
+        f"🔍 Ditemukan <b>{len(results)}</b> hasil untuk "
+        f"<code>{html_escape(query)}</code>",
+        parse_mode=enums.ParseMode.HTML,
+        reply_markup=back_kb(),
+    )
 
-    kb = back_kb()
-    await status.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=kb)
+    for i, r in enumerate(results[:10]):
+        tags_str = ", ".join(r.tags[:5]) if r.tags else "—"
+        ep_str = f"{r.episodes} eps" if r.episodes else "—"
+        year_str = r.year or "—"
+        caption = (
+            f"📖 <b>{html_escape(r.title)}</b>\n"
+            f"🏷️ Tags: {html_escape(tags_str)}\n"
+            f"📺 Episodes: <code>{ep_str}</code>\n"
+            f"📅 Year: <code>{year_str}</code>"
+        )
+        kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "📥 Download",
+                        callback_data=f"search_dl_{i}",
+                    ),
+                    InlineKeyboardButton(
+                        "🔗 Open",
+                        url=r.url,
+                    ),
+                ],
+            ]
+        )
+        if r.poster_url:
+            try:
+                await client.send_photo(
+                    chat_id=message.chat.id,
+                    photo=r.poster_url,
+                    caption=caption,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=kb,
+                )
+            except Exception:
+                await message.reply(
+                    caption,
+                    parse_mode=enums.ParseMode.HTML,
+                    reply_markup=kb,
+                )
+        else:
+            await message.reply(
+                caption,
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=kb,
+            )
 
 
 async def _handle_batch(

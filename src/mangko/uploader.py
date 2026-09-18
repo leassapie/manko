@@ -106,7 +106,13 @@ def build_series_caption(info: SeriesInfo, has_subs: bool = True) -> str:
 
 
 def build_episode_caption(anime_title: str, ep_num: str, final_path: Path, has_subs: bool) -> str:
-    return html_escape(final_path.name)
+    title = html_escape(anime_title) if anime_title else html_escape(final_path.stem)
+    lines = [
+        f"📖 <b>{title}</b> — Episode {ep_num}",
+        f"💬 Subtitle: {'English ✅' if has_subs else '❌ None'}",
+        f"📏 {human_size(final_path.stat().st_size)}",
+    ]
+    return "\n".join(lines)
 
 
 def make_progress_cb(
